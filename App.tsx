@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { WifiSession } from './types';
-import { activateVoucher, checkSessionStatus } from './services/wifiService';
+import { activateVoucher, checkSessionStatus, endSession } from './services/wifiService';
 import PortalView from './components/PortalView';
 import ConnectView from './components/ConnectView';
 import AdminView from './components/AdminView';
@@ -28,12 +28,12 @@ const App: React.FC = () => {
   }, []);
 
   const handleLogout = useCallback(() => {
+    if (session?.sessionId) {
+      // Fire-and-forget call to the backend to end the session
+      endSession(session.sessionId).catch(err => console.error("Failed to end session cleanly", err));
+    }
     setSession(null);
-    // In a real app, this would also call a backend endpoint to terminate the session.
-    try {
-      localStorage.removeItem('wifi_session_end');
-    } catch(e) { console.warn("localStorage not available"); }
-  }, []);
+  }, [session]);
   
   const handleAddTime = useCallback(() => {
       setSession(null);

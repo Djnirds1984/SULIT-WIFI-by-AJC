@@ -1,9 +1,7 @@
+// FIX: Created type definitions to resolve module import errors across the application.
 export interface WifiSession {
+  sessionId: string;
   remainingTime: number; // in seconds
-  dataUsage?: {
-    used: number; // in MB
-    total: number; // in MB
-  };
 }
 
 export interface AdminDashboardStats {
