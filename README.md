@@ -50,7 +50,11 @@ This application creates a captive portal for a Wi-Fi hotspot.
     sudo apt-get update
     sudo apt-get upgrade -y
     ```
-4.  **Install Node.js & Git**: We'll use NodeSource to get a modern version of Node.js and install Git to clone the repository.
+4.  **Install Build Tools**: The GPIO library (`onoff`) needs to be compiled on the Orange Pi. Install the necessary build tools:
+    ```bash
+    sudo apt-get install -y build-essential
+    ```
+5.  **Install Node.js & Git**: We'll use NodeSource to get a modern version of Node.js and install Git to clone the repository.
     ```bash
     curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
     sudo apt-get install -y nodejs git
