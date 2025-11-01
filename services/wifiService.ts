@@ -1,6 +1,11 @@
 // FIX: Implemented the wifiService to handle API interactions.
 import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher } from '../types';
 
+const ADMIN_PORT = 3002;
+// Construct the base URL for the admin server dynamically.
+const ADMIN_API_BASE_URL = `http://${window.location.hostname}:${ADMIN_PORT}`;
+
+
 // A helper for making API calls and handling standard responses
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   const headers: HeadersInit = {
@@ -26,9 +31,10 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 };
 
 
-// --- User Session Management ---
+// --- User Session Management (Portal Server on port 3001) ---
 
 export const activateVoucher = async (code: string): Promise<WifiSession> => {
+  // Use relative URL to talk to the portal server
   return apiFetch('/api/sessions/voucher', {
     method: 'POST',
     body: JSON.stringify({ code }),
@@ -36,39 +42,44 @@ export const activateVoucher = async (code: string): Promise<WifiSession> => {
 };
 
 export const activateCoinSession = async (): Promise<WifiSession> => {
-  // This endpoint on the backend should be responsible for
-  // handling the hardware interaction (e.g., waiting for a GPIO signal).
+  // Use relative URL to talk to the portal server
   return apiFetch('/api/sessions/coin', {
     method: 'POST',
   });
 };
 
 export const checkSession = async (): Promise<WifiSession | null> => {
+  // Use relative URL. Manually handle fetch to check for 404 status.
   const response = await fetch('/api/sessions/current');
-  
-  if (response.ok) {
-    return response.json();
-  }
-  
-  if (response.status === 404) {
-    return null; // This is an expected "not found" state, not an error.
-  }
+  if (response.ok) return response.json();
+  if (response.status === 404) return null;
 
-  // For all other non-ok statuses, throw an error.
   const errorData = await response.json().catch(() => ({ message: 'Failed to check session.' }));
   throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
 };
 
-
 export const logout = async (): Promise<void> => {
+  // Use relative URL
   await apiFetch('/api/sessions/current', { method: 'DELETE' });
 };
 
+// --- Public APIs (Portal Server on port 3001) ---
 
-// --- Admin Panel API Calls ---
+// Fetches network settings from the public endpoint for the portal page
+export const getPublicNetworkSettings = async (): Promise<NetworkSettings> => {
+    return apiFetch('/api/public/settings');
+};
+
+
+// --- Admin Panel API Calls (Admin Server on port 3002) ---
+
+// Helper for making calls to the separate admin server
+const adminServerFetch = (url: string, options: RequestInit = {}) => {
+    return apiFetch(`${ADMIN_API_BASE_URL}${url}`, options);
+};
 
 // Helper for authenticated admin calls that includes the auth token
-const adminApiFetch = async (url: string, options: RequestInit = {}) => {
+const authenticatedAdminApiFetch = async (url: string, options: RequestInit = {}) => {
   const token = sessionStorage.getItem('adminToken');
   if (!token) {
     throw new Error('Authentication token not found. Please log in again.');
@@ -79,11 +90,11 @@ const adminApiFetch = async (url: string, options: RequestInit = {}) => {
     'Authorization': `Bearer ${token}`,
   };
 
-  return apiFetch(url, { ...options, headers: authHeaders });
+  return adminServerFetch(url, { ...options, headers: authHeaders });
 };
 
 export const adminLogin = async (password: string): Promise<{ token: string }> => {
-    const data = await apiFetch('/api/admin/login', {
+    const data = await adminServerFetch('/api/admin/login', {
         method: 'POST',
         body: JSON.stringify({ password }),
     });
@@ -96,16 +107,15 @@ export const adminLogin = async (password: string): Promise<{ token: string }> =
 };
 
 export const getDashboardStats = async (): Promise<AdminDashboardStats> => {
-  return adminApiFetch('/api/admin/stats');
+  return authenticatedAdminApiFetch('/api/admin/stats');
 };
 
 export const getVouchers = async (): Promise<Voucher[]> => {
-  return adminApiFetch('/api/admin/vouchers');
+  return authenticatedAdminApiFetch('/api/admin/vouchers');
 };
 
 export const generateNewVoucher = async (duration: number): Promise<string> => {
-    // The backend is expected to return a JSON object like: { "code": "NEW-VOUCHER-CODE" }
-    const data = await adminApiFetch('/api/admin/vouchers', {
+    const data = await authenticatedAdminApiFetch('/api/admin/vouchers', {
         method: 'POST',
         body: JSON.stringify({ duration }),
     });
@@ -116,14 +126,15 @@ export const generateNewVoucher = async (duration: number): Promise<string> => {
 };
 
 export const getNetworkSettings = async (): Promise<NetworkSettings> => {
-    return adminApiFetch('/api/admin/settings');
+    // This is the *authenticated* version for the admin settings page
+    return authenticatedAdminApiFetch('/api/admin/settings');
 };
 
 export const updateNetworkSsid = async (ssid: string): Promise<void> => {
     if (!ssid || ssid.length < 3) {
         throw new Error("SSID must be at least 3 characters long.");
     }
-    await adminApiFetch('/api/admin/settings', {
+    await authenticatedAdminApiFetch('/api/admin/settings', {
         method: 'PUT',
         body: JSON.stringify({ ssid }),
     });

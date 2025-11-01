@@ -28,7 +28,7 @@ function App() {
         setSession(null);
         // stay on portal or login view
       }
-      const settings = await wifiService.getNetworkSettings();
+      const settings = await wifiService.getPublicNetworkSettings();
       setNetworkSsid(settings.ssid);
     } catch (e) {
       setError('Could not connect to the service. Please try again later.');
