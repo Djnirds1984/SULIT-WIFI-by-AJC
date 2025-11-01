@@ -1,11 +1,6 @@
 // FIX: Implemented the wifiService to handle API interactions.
 import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher } from '../types';
 
-const ADMIN_PORT = 3002;
-// Construct the base URL for the admin server dynamically.
-const ADMIN_API_BASE_URL = `http://${window.location.hostname}:${ADMIN_PORT}`;
-
-
 // A helper for making API calls and handling standard responses
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   const headers: HeadersInit = {
@@ -71,14 +66,10 @@ export const getPublicNetworkSettings = async (): Promise<NetworkSettings> => {
 };
 
 
-// --- Admin Panel API Calls (Admin Server on port 3002) ---
+// --- Admin Panel API Calls (proxied to Admin Server by Nginx) ---
 
-// Helper for making calls to the separate admin server
-const adminServerFetch = (url: string, options: RequestInit = {}) => {
-    return apiFetch(`${ADMIN_API_BASE_URL}${url}`, options);
-};
-
-// Helper for authenticated admin calls that includes the auth token
+// Helper for authenticated admin calls that includes the auth token.
+// These now use relative paths, and Nginx is responsible for routing them to the Admin Server.
 const authenticatedAdminApiFetch = async (url: string, options: RequestInit = {}) => {
   const token = sessionStorage.getItem('adminToken');
   if (!token) {
@@ -90,11 +81,11 @@ const authenticatedAdminApiFetch = async (url: string, options: RequestInit = {}
     'Authorization': `Bearer ${token}`,
   };
 
-  return adminServerFetch(url, { ...options, headers: authHeaders });
+  return apiFetch(url, { ...options, headers: authHeaders });
 };
 
 export const adminLogin = async (password: string): Promise<{ token: string }> => {
-    const data = await adminServerFetch('/api/admin/login', {
+    const data = await apiFetch('/api/admin/login', {
         method: 'POST',
         body: JSON.stringify({ password }),
     });

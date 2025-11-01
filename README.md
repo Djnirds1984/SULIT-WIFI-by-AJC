@@ -92,7 +92,7 @@ This application creates a captive portal for a Wi-Fi hotspot. It features a uni
 
 ## Step 4: Nginx & Captive Portal Configuration
 
-We use Nginx as a reverse proxy for the **Portal Server** and `nodogsplash` as the captive portal software.
+We use Nginx as a reverse proxy for both servers and `nodogsplash` as the captive portal software. This setup isolates traffic: the portal is only visible on the local Wi-Fi network, while the admin panel is visible on the WAN.
 
 ### 1. Install Nginx and Nodogsplash
 ```bash
@@ -100,18 +100,35 @@ sudo apt-get install -y nginx nodogsplash
 ```
 
 ### 2. Configure Nginx
-Nginx will forward local traffic from port 80 to our Portal Server on port 3001.
+Nginx will route traffic based on the IP address it's accessed from.
 
 *   **Create Nginx config file**: `sudo nano /etc/nginx/sites-available/sulit-wifi-portal`
 *   **Paste the following configuration**, replacing `192.168.200.13` with your Pi's LAN IP address.
     ```nginx
+    # Server block for the User Portal (Captive Portal)
+    # Listens ONLY on the local network interface.
     server {
-        listen 80;
-        listen [::]:80;
-        server_name 192.168.200.13; # Replace with your Pi's LAN IP
+        listen 192.168.200.13:80; # IMPORTANT: Replace with your Pi's LAN IP
+        server_name 192.168.200.13;
 
         location / {
             proxy_pass http://localhost:3001;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+        }
+    }
+
+    # Server block for the Admin Panel
+    # Listens on all other interfaces (including WAN) as the default server.
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+
+        location / {
+            proxy_pass http://localhost:3002;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
@@ -128,7 +145,7 @@ Nginx will forward local traffic from port 80 to our Portal Server on port 3001.
 *   **Test and restart Nginx**: `sudo nginx -t` followed by `sudo systemctl restart nginx`.
 
 ### 3. Configure Nodogsplash
-Redirect captive portal clients to the Nginx proxy.
+Redirect captive portal clients to the Nginx proxy on the LAN IP.
 
 *   **Edit config**: `sudo nano /etc/nodogsplash/nodogsplash.conf`
     *   Set `GatewayInterface wlan0` (or your Wi-Fi adapter's name).
@@ -182,20 +199,20 @@ Redirect captive portal clients to the Nginx proxy.
 
 ## Step 6: Admin Panel WAN Access
 
-The Admin Server runs on port `3002`. To access it from outside your local hotspot network (e.g., from your main home network or the internet), you need to allow traffic on this port through the firewall.
+The Admin Server is proxied by Nginx on port `80`. To access it from outside your local hotspot network (e.g., from your main home network or the internet), you need to allow HTTP traffic through the firewall.
 
 1.  **Configure Firewall (UFW)**: If you use `ufw` (Uncomplicated Firewall) on Armbian:
     ```bash
-    # Allow incoming TCP traffic on port 3002
-    sudo ufw allow 3002/tcp
+    # Allow incoming HTTP traffic on port 80
+    sudo ufw allow 80/tcp
     
     # Enable the firewall if it's not already running
     sudo ufw enable
     ```
-    If you are behind another router, you may also need to set up port forwarding on that router to forward traffic from its WAN IP on port `3002` to your Orange Pi's IP on port `3002`.
+    If you are behind another router, you may also need to set up port forwarding on that router to forward traffic from its WAN IP on port `80` to your Orange Pi's IP on port `80`.
 
-2.  **Access the Admin Panel**: You can now access the admin panel using your Orange Pi's WAN-facing IP address:
-    `http://<YOUR_ORANGE_PI_WAN_IP>:3002/admin`
+2.  **Access the Admin Panel**: You can now access the admin panel using your Orange Pi's WAN-facing IP address without a port:
+    `http://<YOUR_ORANGE_PI_WAN_IP>/admin`
 
 ---
 
