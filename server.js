@@ -63,10 +63,18 @@ try {
 }
 
 // --- Common Middleware ---
+// Configure express.static to serve .tsx files as JavaScript modules
+const staticOptions = {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.tsx')) {
+            res.setHeader('Content-Type', 'application/javascript');
+        }
+    }
+};
 const commonMiddleware = [
     cors(),
     bodyParser.json(),
-    express.static(path.join(__dirname)) // Serve static files from the project root.
+    express.static(path.join(__dirname), staticOptions) // Serve static files with correct MIME types
 ];
 portalApp.use(commonMiddleware);
 adminApp.use(commonMiddleware);

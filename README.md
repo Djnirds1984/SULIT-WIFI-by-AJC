@@ -180,14 +180,21 @@ Redirect captive portal clients to the Nginx proxy on the LAN IP.
     ```
 2.  **Start the Backend with PM2**:
     *   Install PM2: `sudo npm install pm2 -g`
-    *   Start the server:
+    *   **Start the server**:
         ```bash
         cd ~/sulit-wifi-portal
         # CRITICAL: Run from the project directory to prevent file-not-found errors.
         pm2 start server.js --name "sulit-wifi"
         ```
     *   **Manage with PM2**:
-        `pm2 list`, `pm2 restart sulit-wifi`, `pm2 logs sulit-wifi`, `pm2 delete sulit-wifi`
+        *   `pm2 list`: Show all running applications.
+        *   `pm2 logs sulit-wifi`: View live logs.
+        *   `pm2 stop sulit-wifi`: Stop the application.
+        *   `pm2 delete sulit-wifi`: Remove the application from PM2's list.
+    *   **Applying Changes**: If you ever modify `server.js` or any other backend file, you **must** restart the application to apply the changes. The old code will continue running otherwise.
+        ```bash
+        pm2 restart sulit-wifi
+        ```
     *   **Enable on boot**: `pm2 save` then `pm2 startup` (follow the on-screen command).
 
 3.  **Start Nodogsplash**:
