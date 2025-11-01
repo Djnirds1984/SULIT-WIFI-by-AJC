@@ -9,7 +9,7 @@ This guide provides step-by-step instructions for deploying the SULIT WIFI hotsp
 3.  [Step 1: Orange Pi One Setup](#step-1-orange-pi-one-setup)
 4.  [Step 2: Backend & Frontend Setup](#step-2-backend--frontend-setup)
 5.  [Step 3: GPIO Coin Slot Integration](#step-3-gpio-coin-slot-integration)
-6.  [Step 4: Captive Portal Configuration](#step-4-captive-portal-configuration)
+6.  [Step 4: Nginx & Captive Portal Configuration](#step-4-nginx--captive-portal-configuration)
 7.  [Step 5: Running the Application](#step-5-running-the-application)
 
 ---
@@ -104,84 +104,128 @@ The GitHub repository contains all the necessary backend files (`server.js`, `pa
 
 ---
 
-## Step 4: Captive Portal Configuration
+## Step 4: Nginx & Captive Portal Configuration
 
-To make this a real hotspot, you need software to intercept traffic and redirect users to your portal. `nodogsplash` is a great choice.
+To make the portal accessible without the `:3001` port and to intercept traffic, we will use Nginx as a reverse proxy and `nodogsplash` as the captive portal software.
 
-1.  **Install Nodogsplash**:
+### 1. Install Nginx and Nodogsplash
+```bash
+sudo apt-get install -y nginx nodogsplash
+```
+
+### 2. Configure Nginx as a Reverse Proxy
+Nginx will listen on the standard HTTP port (80) and forward requests to our Node.js application running on port 3001.
+
+*   **Create an Nginx configuration file**:
     ```bash
-    sudo apt-get install nodogsplash
+    sudo nano /etc/nginx/sites-available/sulit-wifi-portal
     ```
-2.  **Configure Nodogsplash**:
-    *   Edit the configuration file: `sudo nano /etc/nodogsplash/nodogsplash.conf`
-    *   Find and change the following lines:
-        ```conf
-        # GatewayInterface: Set this to your USB Wi-Fi adapter's interface name (e.g., wlan0)
-        # Run `ip a` to find the correct name.
-        GatewayInterface wlan0
+*   **Paste the following configuration** into the file. Replace `192.168.200.13` with your Orange Pi's actual IP address.
+    ```nginx
+    server {
+        listen 80;
+        listen [::]:80;
 
-        # This tells nodogsplash to allow traffic to your backend API server
-        # (running on port 3001) without requiring authentication. This is crucial.
-        FirewallRuleSet authenticated-users {
-            FirewallRule allow tcp port 3001
+        server_name 192.168.200.13; # Replace with your Pi's IP address
+
+        location / {
+            proxy_pass http://localhost:3001;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
         }
-        FirewallRuleSet preauthenticated-users {
-            FirewallRule allow tcp port 3001
-        }
-        ```
-    *   Nodogsplash has its own web server for the portal page. We need to replace its content to redirect to our Node server.
-    *   Edit the splash page: `sudo nano /etc/nodogsplash/htdocs/splash.html`
-    *   Replace the entire content of the file with a meta refresh tag. This redirect passes along crucial client information (`$mac`, `$ip`) that our server needs.
-        ```html
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8" />
-            <meta http-equiv="refresh" content="0; url=http://<ORANGE_PI_IP_ADDRESS>:3001/?mac=$mac&ip=$ip&gw_id=$gw_id" />
-            <title>Connecting...</title>
-        </head>
-        <body>
-            <p>Please wait, you are being redirected to the login page...</p>
-        </body>
-        </html>
-        ```
-3.  **Authentication Logic**: The `server.js` file already contains the logic to execute `ndsctl` commands. You just need to give the server permission to do so.
-    *   **Permissions**: The user running your Node.js server needs passwordless `sudo` access to `ndsctl`. Edit sudoers with `sudo visudo` and add this line at the bottom, replacing `<your-username>` with your actual username:
+    }
+    ```
+*   **Enable the new site**:
+    ```bash
+    # First, remove the default config to avoid conflicts
+    sudo rm /etc/nginx/sites-enabled/default
+    
+    # Then, create a symbolic link to enable our new config
+    sudo ln -s /etc/nginx/sites-available/sulit-wifi-portal /etc/nginx/sites-enabled/
+    ```
+*   **Test and restart Nginx**:
+    ```bash
+    sudo nginx -t  # Should report syntax is ok
+    sudo systemctl restart nginx
+    ```
+
+### 3. Configure Nodogsplash
+Now we configure `nodogsplash` to redirect users to our portal, which is now served by Nginx on port 80.
+
+*   **Edit the main configuration file**:
+    ```bash
+    sudo nano /etc/nodogsplash/nodogsplash.conf
+    ```
+*   Find and change the following lines. Note that we no longer need firewall rules for port 3001, as all traffic now goes through Nginx on port 80, which `nodogsplash` handles.
+    ```conf
+    # GatewayInterface: Set this to your USB Wi-Fi adapter's interface name (e.g., wlan0)
+    # Run `ip a` to find the correct name.
+    GatewayInterface wlan0
+    ```
+*   **Edit the splash page for redirection**:
+    ```bash
+    sudo nano /etc/nodogsplash/htdocs/splash.html
+    ```
+*   Replace the **entire content** of the file with a meta refresh tag. This redirect passes along crucial client information (`$mac`, `$ip`) to our server. **Note the absence of `:3001` in the URL.**
+    ```html
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8" />
+        <meta http-equiv="refresh" content="0; url=http://<ORANGE_PI_IP_ADDRESS>/?mac=$mac&ip=$ip&gw_id=$gw_id" />
+        <title>Connecting...</title>
+    </head>
+    <body>
+        <p>Please wait, you are being redirected to the login page...</p>
+    </body>
+    </html>
+    ```
+*   **Enable passwordless `ndsctl` access**: The `server.js` file executes `ndsctl` commands to manage users. Give the server permission to do so without a password.
+    *   Run `sudo visudo`.
+    *   Add this line at the very bottom, replacing `<your-username>` with your actual username:
         `<your-username> ALL=(ALL) NOPASSWD: /usr/bin/ndsctl`
 
 ---
 
 ## Step 5: Running the Application
 
-1.  **Set Gemini API Key (Optional)**: If you want to use the Wi-Fi name generator in the admin panel, you must set your API key as an environment variable.
+1.  **Set Gemini API Key (Optional)**: If you want to use the Wi-Fi name generator, set your API key as an environment variable.
     ```bash
     export API_KEY="your_gemini_api_key_here"
     ```
-2.  **Start the Backend**:
-    ```bash
-    # Navigate to your project directory
-    cd ~/sulit-wifi-portal
-    node server.js
-    ```
+    **Note**: To make this variable permanent across reboots, add the line above to your user's shell profile file, such as `~/.bashrc` or `~/.profile`, and then run `source ~/.bashrc` or log out and log back in.
+
+2.  **Start the Backend with PM2**: `pm2` is a process manager that will keep your server running and restart it automatically.
+    *   **Install PM2**:
+        ```bash
+        sudo npm install pm2 -g
+        ```
+    *   **Start the server**:
+        ```bash
+        # First, navigate to your project directory
+        cd ~/sulit-wifi-portal
+        
+        # CRITICAL: Run the start command from *inside* the project directory.
+        # This is required to prevent "ENOENT: no such file or directory" errors,
+        # as the server needs to know where to find the 'public' folder.
+        pm2 start server.js --name "sulit-wifi"
+        ```
+    *   **Enable startup on boot**:
+        ```bash
+        # Save the current process list to run on startup
+        pm2 save
+        
+        # Generate and run the startup script
+        pm2 startup
+        ```
+        Follow the single command instruction provided by `pm2 startup` to complete the setup.
+
 3.  **Start Nodogsplash**:
     ```bash
     sudo nodogsplash
     ```
-4.  **Run on Boot (PM2)**: To ensure your server runs automatically and stays running after a reboot, use `pm2`.
-    ```bash
-    sudo npm install pm2 -g
-    cd ~/sulit-wifi-portal
-    
-    # Start the server with PM2. If using the Gemini feature,
-    # make sure you have already run 'export API_KEY'.
-    pm2 start server.js --name "sulit-wifi"
-    
-    # Save the current process list to run on startup
-    pm2 save
-    
-    # Generate and run the startup script
-    pm2 startup
-    ```
-    Follow the single command instruction provided by `pm2 startup` to complete the setup.
 
-You should now have a fully functional Wi-Fi hotspot portal running on your Orange Pi One!
+You should now have a fully functional Wi-Fi hotspot portal running on your Orange Pi One, accessible at `http://<YOUR_ORANGE_PI_IP>`.
