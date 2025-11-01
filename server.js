@@ -226,33 +226,62 @@ adminRouter.get('/stats', adminAuth, (req, res) => {
 });
 
 adminRouter.get('/system-info', adminAuth, async (req, res) => {
+    const getSysInfo = async () => {
+        const info = {
+            cpu: { model: 'N/A', cores: 0 },
+            ram: { totalMb: 0, usedMb: 0 },
+            disk: { totalMb: 0, usedMb: 0 },
+        };
+
+        try {
+            const { stdout: cpuInfo } = await promiseExec(`echo $(nproc) && lscpu | grep "Model name" | sed 's/Model name:[ \\t]*//'`);
+            const cpuLines = cpuInfo.trim().split('\n');
+            if (cpuLines.length > 0) info.cpu.cores = parseInt(cpuLines[0], 10) || 0;
+            if (cpuLines.length > 1) info.cpu.model = cpuLines[1];
+        } catch (e) {
+            console.warn('[Admin] Could not get CPU info:', e.message);
+        }
+
+        try {
+            const { stdout: ramInfo } = await promiseExec(`free -m | awk '/^Mem:/ {print $2, $3}'`);
+            const ramParts = ramInfo.trim().split(/\s+/);
+            if (ramParts.length === 2) {
+                info.ram.totalMb = parseInt(ramParts[0], 10) || 0;
+                info.ram.usedMb = parseInt(ramParts[1], 10) || 0;
+            }
+        } catch (e) {
+            console.warn('[Admin] Could not get RAM info:', e.message);
+        }
+
+        try {
+            const { stdout: diskInfo } = await promiseExec(`df -B1M --output=size,used / | awk 'NR==2 {print $1, $2}'`);
+            const diskParts = diskInfo.trim().split(/\s+/);
+            if (diskParts.length === 2) {
+                info.disk.totalMb = parseInt(diskParts[0], 10) || 0;
+                info.disk.usedMb = parseInt(diskParts[1], 10) || 0;
+            }
+        } catch (e) {
+            console.warn('[Admin] Could not get Disk info:', e.message);
+        }
+
+        // Use dummy data if everything failed (e.g., for non-Linux dev environments)
+        if (info.cpu.cores === 0 && info.ram.totalMb === 0) {
+            console.warn('[Admin] System commands failed, returning dummy data.');
+            return {
+                cpu: { model: 'ARMv7 Processor (Dummy)', cores: 4 },
+                ram: { totalMb: 512, usedMb: 128 },
+                disk: { totalMb: 15360, usedMb: 4096 },
+            };
+        }
+
+        return info;
+    };
+
     try {
-        const [cpuInfo, ramInfo, diskInfo] = await Promise.all([
-            promiseExec(`echo $(nproc) && lscpu | grep "Model name" | sed 's/Model name:[ \\t]*//'`),
-            promiseExec(`free -m | awk '/^Mem:/ {print $2, $3}'`),
-            promiseExec(`df -B1M --output=size,used / | awk 'NR==2 {print $1, $2}'`)
-        ]).catch(e => {
-            // Handle case where commands might not be available
-            console.warn("[Admin] Could not execute a system command. Returning dummy data. Error:", e.message);
-            // Provide dummy data for non-Linux environments or if a command fails
-            return [
-                { stdout: '4\nARMv7 Processor rev 5 (v7l)' },
-                { stdout: '512 128' },
-                { stdout: '15360 4096' }
-            ];
-        });
-
-        const [cores, model] = cpuInfo.stdout.trim().split('\n');
-        const [totalMb, usedMb] = ramInfo.stdout.trim().split(' ');
-        const [totalDiskMb, usedDiskMb] = diskInfo.stdout.trim().split(/\s+/);
-
-        res.json({
-            cpu: { model, cores: parseInt(cores, 10) },
-            ram: { totalMb: parseInt(totalMb, 10), usedMb: parseInt(usedMb, 10) },
-            disk: { totalMb: parseInt(totalDiskMb, 10), usedMb: parseInt(usedDiskMb, 10) }
-        });
+        const data = await getSysInfo();
+        res.json(data);
     } catch (error) {
-        console.error('[Admin] Failed to get system info:', error);
+        console.error('[Admin] Unhandled error in getSystemInfo:', error);
         res.status(500).json({ message: 'Could not retrieve system information.' });
     }
 });
