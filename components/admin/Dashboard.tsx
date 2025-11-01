@@ -93,7 +93,7 @@ const Dashboard: React.FC = () => {
         <div className="space-y-6 animate-fade-in-slow">
             <div>
                 <h3 className="text-xl font-bold text-indigo-400 mb-4">System Status</h3>
-                {isStatsLoading ? <LoadingPlaceholder /> : statsError ? <ErrorPlaceholder message={statsError} /> : (
+                {isStatsLoading ? <LoadingPlaceholder /> : statsError ? <ErrorPlaceholder message={statsError} /> : stats && (
                     <div className="space-y-4">
                         <StatCard icon={<UserGroupIcon />} label="Active Sessions" value={stats.activeSessions} color="#818cf8" />
                         <StatCard icon={<TicketIcon />} label="Vouchers Used" value={stats.totalVouchersUsed} color="#60a5fa" />
@@ -104,7 +104,7 @@ const Dashboard: React.FC = () => {
 
             <div>
                  <h3 className="text-xl font-bold text-indigo-400 mb-4">Hardware Information</h3>
-                 {isSystemInfoLoading ? <LoadingPlaceholder /> : systemInfoError ? <ErrorPlaceholder message={systemInfoError} /> : (
+                 {isSystemInfoLoading ? <LoadingPlaceholder /> : systemInfoError ? <ErrorPlaceholder message={systemInfoError} /> : systemInfo && (
                     <div className="space-y-4">
                         <SpecCard icon={<CpuChipIcon />} label="CPU">
                             <p className="text-md font-bold text-white truncate">{systemInfo.cpu.model}</p>
