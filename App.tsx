@@ -8,13 +8,11 @@ import AdminLoginView from './components/AdminLoginView.tsx';
 import AdminView from './components/AdminView.tsx';
 import { WifiIcon } from './components/icons/WifiIcon.tsx';
 
-type AppView = 'PORTAL' | 'CONNECTED' | 'ADMIN_LOGIN' | 'ADMIN_DASHBOARD';
-
 function App() {
   const [session, setSession] = useState<WifiSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<AppView>('PORTAL');
+  const [view, setView] = useState('PORTAL');
   const [networkSsid, setNetworkSsid] = useState('SULIT WIFI');
 
   const fetchSession = useCallback(async () => {
