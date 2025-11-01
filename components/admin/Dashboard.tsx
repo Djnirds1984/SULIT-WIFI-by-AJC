@@ -11,28 +11,44 @@ import { AdminDashboardStats, SystemInfo } from '../../types';
 const Dashboard: React.FC = () => {
     const [stats, setStats] = useState<AdminDashboardStats | null>(null);
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    
+    const [isStatsLoading, setIsStatsLoading] = useState(true);
+    const [isSystemInfoLoading, setIsSystemInfoLoading] = useState(true);
+    
+    const [statsError, setStatsError] = useState<string | null>(null);
+    const [systemInfoError, setSystemInfoError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchAllData = async () => {
-            setIsLoading(true);
-            setError(null);
+        const fetchStats = async () => {
+            setIsStatsLoading(true);
+            setStatsError(null);
             try {
-                const [statsData, systemInfoData] = await Promise.all([
-                    getDashboardStats(),
-                    getSystemInfo()
-                ]);
+                const statsData = await getDashboardStats();
                 setStats(statsData);
-                setSystemInfo(systemInfoData);
             } catch (error) {
-                console.error("Failed to fetch dashboard data", error);
-                setError('Could not load all dashboard data.');
+                console.error("Failed to fetch stats", error);
+                setStatsError("Could not load system stats.");
             } finally {
-                setIsLoading(false);
+                setIsStatsLoading(false);
             }
         };
-        fetchAllData();
+
+        const fetchSystemInfo = async () => {
+            setIsSystemInfoLoading(true);
+            setSystemInfoError(null);
+            try {
+                const systemInfoData = await getSystemInfo();
+                setSystemInfo(systemInfoData);
+            } catch (error) {
+                console.error("Failed to fetch system info", error);
+                setSystemInfoError("Could not load hardware information.");
+            } finally {
+                setIsSystemInfoLoading(false);
+            }
+        };
+
+        fetchStats();
+        fetchSystemInfo();
     }, []);
 
     const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>, label: string, value: string | number, color: string }) => (
@@ -69,31 +85,26 @@ const Dashboard: React.FC = () => {
             </div>
         )
     }
-
-    if (isLoading) {
-        return <div className="text-center p-8 text-slate-400">Loading dashboard...</div>;
-    }
     
-    if (error) {
-        return <div className="text-center p-8 text-red-400">{error}</div>;
-    }
+    const LoadingPlaceholder = () => <div className="text-center p-4 text-slate-400 text-sm">Loading...</div>;
+    const ErrorPlaceholder = ({ message }: { message: string }) => <div className="text-center p-4 text-red-400 text-sm">{message}</div>;
 
     return (
         <div className="space-y-6 animate-fade-in-slow">
             <div>
                 <h3 className="text-xl font-bold text-indigo-400 mb-4">System Status</h3>
-                {stats ? (
+                {isStatsLoading ? <LoadingPlaceholder /> : statsError ? <ErrorPlaceholder message={statsError} /> : (
                     <div className="space-y-4">
                         <StatCard icon={<UserGroupIcon />} label="Active Sessions" value={stats.activeSessions} color="#818cf8" />
                         <StatCard icon={<TicketIcon />} label="Vouchers Used" value={stats.totalVouchersUsed} color="#60a5fa" />
                         <StatCard icon={<WifiIcon />} label="Vouchers Available" value={stats.totalVouchersAvailable} color="#4ade80" />
                     </div>
-                ) : <p className="text-sm text-slate-500">Could not load system stats.</p>}
+                )}
             </div>
 
             <div>
                  <h3 className="text-xl font-bold text-indigo-400 mb-4">Hardware Information</h3>
-                 {systemInfo ? (
+                 {isSystemInfoLoading ? <LoadingPlaceholder /> : systemInfoError ? <ErrorPlaceholder message={systemInfoError} /> : (
                     <div className="space-y-4">
                         <SpecCard icon={<CpuChipIcon />} label="CPU">
                             <p className="text-md font-bold text-white truncate">{systemInfo.cpu.model}</p>
@@ -108,7 +119,7 @@ const Dashboard: React.FC = () => {
                             <ProgressBar value={systemInfo.disk.usedMb} total={systemInfo.disk.totalMb} colorClass="bg-emerald-500" />
                         </SpecCard>
                     </div>
-                ) : <p className="text-sm text-slate-500">Could not load hardware information.</p>}
+                )}
             </div>
         </div>
     );

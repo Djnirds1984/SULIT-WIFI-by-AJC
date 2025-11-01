@@ -113,12 +113,14 @@ function App() {
     }
   }
 
+  const isAdminView = view === 'ADMIN_LOGIN' || view === 'ADMIN_DASHBOARD';
+
   return (
     <div className="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md mx-auto bg-slate-800/50 rounded-2xl shadow-2xl shadow-black/50 p-6 md:p-8 border border-slate-700 backdrop-blur-sm">
-        <header onClick={handleHeaderClick} className="flex flex-col items-center mb-6 cursor-pointer group">
-          <WifiIcon className="w-12 h-12 text-sky-400 group-hover:text-sky-300 transition-colors" />
-          <h1 className="mt-2 text-xl font-bold text-center tracking-wider text-slate-200 group-hover:text-white transition-colors">{networkSsid}</h1>
+      <div className={`w-full ${isAdminView ? 'max-w-4xl' : 'max-w-md'} mx-auto bg-slate-800/50 rounded-2xl shadow-2xl shadow-black/50 p-6 md:p-8 border border-slate-700 backdrop-blur-sm`}>
+        <header onClick={handleHeaderClick} className={`flex flex-col items-center mb-6 ${isAdminView ? '' : 'cursor-pointer group'}`}>
+          <WifiIcon className={`w-12 h-12 text-sky-400 ${isAdminView ? '' : 'group-hover:text-sky-300'} transition-colors`} />
+          <h1 className={`mt-2 text-xl font-bold text-center tracking-wider text-slate-200 ${isAdminView ? '' : 'group-hover:text-white'} transition-colors`}>{networkSsid}</h1>
         </header>
 
         <main>
