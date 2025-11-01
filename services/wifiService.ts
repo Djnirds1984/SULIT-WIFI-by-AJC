@@ -1,5 +1,5 @@
 // FIX: Implemented the wifiService to handle API interactions.
-import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher } from '../types';
+import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher, SystemInfo } from '../types';
 
 // A helper for making API calls and handling standard responses
 const apiFetch = async (url: string, options: RequestInit = {}) => {
@@ -99,6 +99,10 @@ export const adminLogin = async (password: string): Promise<{ token: string }> =
 
 export const getDashboardStats = async (): Promise<AdminDashboardStats> => {
   return authenticatedAdminApiFetch('/api/admin/stats');
+};
+
+export const getSystemInfo = async (): Promise<SystemInfo> => {
+    return authenticatedAdminApiFetch('/api/admin/system-info');
 };
 
 export const getVouchers = async (): Promise<Voucher[]> => {

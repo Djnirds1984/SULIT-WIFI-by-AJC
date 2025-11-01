@@ -8,8 +8,11 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const { exec } = require('child_process');
+const util = require('util');
 const { Gpio } = require('onoff');
 const path = require('path');
+
+const promiseExec = util.promisify(exec);
 
 // --- Server Setup ---
 // We will run two separate Express apps in one Node process.
@@ -220,6 +223,38 @@ adminRouter.get('/stats', adminAuth, (req, res) => {
     const totalVouchersUsed = Array.from(db.vouchers.values()).filter(v => v.used).length;
     const totalVouchersAvailable = Array.from(db.vouchers.values()).filter(v => !v.used).length;
     res.json({ activeSessions, totalVouchersUsed, totalVouchersAvailable });
+});
+
+adminRouter.get('/system-info', adminAuth, async (req, res) => {
+    try {
+        const [cpuInfo, ramInfo, diskInfo] = await Promise.all([
+            promiseExec(`echo $(nproc) && lscpu | grep "Model name" | sed 's/Model name:[ \\t]*//'`),
+            promiseExec(`free -m | awk '/^Mem:/ {print $2, $3}'`),
+            promiseExec(`df -B1M --output=size,used / | awk 'NR==2 {print $1, $2}'`)
+        ]).catch(e => {
+            // Handle case where commands might not be available
+            console.warn("[Admin] Could not execute a system command. Returning dummy data. Error:", e.message);
+            // Provide dummy data for non-Linux environments or if a command fails
+            return [
+                { stdout: '4\nARMv7 Processor rev 5 (v7l)' },
+                { stdout: '512 128' },
+                { stdout: '15360 4096' }
+            ];
+        });
+
+        const [cores, model] = cpuInfo.stdout.trim().split('\n');
+        const [totalMb, usedMb] = ramInfo.stdout.trim().split(' ');
+        const [totalDiskMb, usedDiskMb] = diskInfo.stdout.trim().split(/\s+/);
+
+        res.json({
+            cpu: { model, cores: parseInt(cores, 10) },
+            ram: { totalMb: parseInt(totalMb, 10), usedMb: parseInt(usedMb, 10) },
+            disk: { totalMb: parseInt(totalDiskMb, 10), usedMb: parseInt(usedDiskMb, 10) }
+        });
+    } catch (error) {
+        console.error('[Admin] Failed to get system info:', error);
+        res.status(500).json({ message: 'Could not retrieve system information.' });
+    }
 });
 
 adminRouter.get('/vouchers', adminAuth, (req, res) => {

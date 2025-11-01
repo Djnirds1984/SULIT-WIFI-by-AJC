@@ -21,3 +21,19 @@ export interface Voucher {
   duration: number; // in seconds
   used: boolean;
 }
+
+export interface CpuInfo {
+    model: string;
+    cores: number;
+}
+
+export interface ResourceUsage {
+    totalMb: number;
+    usedMb: number;
+}
+
+export interface SystemInfo {
+    cpu: CpuInfo;
+    ram: ResourceUsage;
+    disk: ResourceUsage;
+}
