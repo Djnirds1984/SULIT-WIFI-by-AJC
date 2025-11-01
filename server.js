@@ -9,6 +9,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const { exec } = require('child_process');
 const { Gpio } = require('onoff');
+const path = require('path');
 
 // --- Server Setup ---
 // We will run two separate Express apps in one Node process.
@@ -65,7 +66,7 @@ try {
 const commonMiddleware = [
     cors(),
     bodyParser.json(),
-    express.static('public') // Both servers need to serve the frontend files
+    express.static(path.join(__dirname)) // Serve static files from the project root.
 ];
 portalApp.use(commonMiddleware);
 adminApp.use(commonMiddleware);
@@ -177,7 +178,7 @@ portalApp.delete('/api/sessions/current', (req, res) => {
 
 // Catch-all for Portal Frontend Routing
 portalApp.get('*', (req, res) => {
-  res.sendFile('index.html', { root: 'public' });
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 
@@ -250,7 +251,7 @@ adminApp.put('/api/admin/settings', adminAuth, (req, res) => {
 
 // Catch-all for Admin Frontend Routing
 adminApp.get('*', (req, res) => {
-  res.sendFile('index.html', { root: 'public' });
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // --- Start Both Servers ---
