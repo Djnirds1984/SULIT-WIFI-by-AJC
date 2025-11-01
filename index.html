@@ -29,7 +29,7 @@
 </head>
   <body>
     <div id="root"></div>
-    <!-- Change script type to text/babel for Babel to transpile it, and add presets for React/TS -->
-    <script type="text/babel" data-presets="react,typescript" src="/index.tsx"></script>
+    <!-- Add data-type="module" to tell Babel to process ES Modules correctly -->
+    <script type="text/babel" data-type="module" data-presets="react,typescript" src="/index.tsx"></script>
   </body>
 </html>
