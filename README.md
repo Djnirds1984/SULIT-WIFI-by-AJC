@@ -7,11 +7,10 @@ This guide provides step-by-step instructions for deploying the SULIT WIFI hotsp
 1.  [Project Overview](#project-overview)
 2.  [Hardware & Software Prerequisites](#hardware--software-prerequisites)
 3.  [Step 1: Orange Pi One Setup](#step-1-orange-pi-one-setup)
-4.  [Step 2: Backend Setup (Node.js)](#step-2-backend-setup-nodejs)
-5.  [Step 3: Frontend Build](#step-3-frontend-build)
-6.  [Step 4: GPIO Coin Slot Integration](#step-4-gpio-coin-slot-integration)
-7.  [Step 5: Captive Portal Configuration](#step-5-captive-portal-configuration)
-8.  [Step 6: Running the Application](#step-6-running-the-application)
+4.  [Step 2: Backend & Frontend Setup](#step-2-backend--frontend-setup)
+5.  [Step 3: GPIO Coin Slot Integration](#step-3-gpio-coin-slot-integration)
+6.  [Step 4: Captive Portal Configuration](#step-4-captive-portal-configuration)
+7.  [Step 5: Running the Application](#step-5-running-the-application)
 
 ---
 
@@ -51,63 +50,40 @@ This application creates a captive portal for a Wi-Fi hotspot.
     sudo apt-get update
     sudo apt-get upgrade -y
     ```
-4.  **Install Node.js**: We'll use NodeSource to get a modern version of Node.js.
+4.  **Install Node.js & Git**: We'll use NodeSource to get a modern version of Node.js and install Git to clone the repository.
     ```bash
     curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    sudo apt-get install -y nodejs git
     ```
     Verify the installation:
     ```bash
     node -v  # Should show v18.x.x or higher
     npm -v
+    git --version
     ```
 
 ---
 
-## Step 2: Backend Setup (Node.js)
+## Step 2: Backend & Frontend Setup
 
-The backend server (`server.js`) and its dependencies (`package.json`) are included in this project. You just need to install the dependencies.
+The GitHub repository contains all the necessary backend files (`server.js`, `package.json`) and the pre-built frontend files in the `public` directory.
 
-1.  **Create Project Directory**: On your Orange Pi, create a directory for the project.
+1.  **Clone the Repository**: On your Orange Pi, clone the project from GitHub. This will create a `sulit-wifi-portal` directory with all the required files.
     ```bash
-    mkdir ~/sulit-wifi-portal
-    cd ~/sulit-wifi-portal
+    git clone https://github.com/Djnirds1984/SULIT-WIFI-by-AJC.git sulit-wifi-portal
+    cd sulit-wifi-portal
     ```
     
-2.  **Transfer Project Files**: Copy all the project files (including `server.js`, `package.json`, `index.html`, etc.) into this directory. You can do this using `scp` from your development computer or by cloning from a Git repository.
-
-3.  **Install Dependencies**: The `package.json` file lists all the necessary Node.js packages for the server. Install them using npm.
+2.  **Install Backend Dependencies**: The `package.json` file lists all the necessary Node.js packages for the server. Install them using npm.
     ```bash
     # Make sure you are in the ~/sulit-wifi-portal directory
     npm install
     ```
-    This will read `package.json` and install libraries like Express, onoff, and cors into a `node_modules` folder.
+    This will read `package.json` and install libraries like Express, onoff, and cors into a `node_modules` folder. The frontend is already built and located in the `public` folder, so no further action is needed for it.
 
 ---
 
-## Step 3: Frontend Build
-
-The React application needs to be "built" into static HTML, CSS, and JavaScript files that the `server.js` file can serve.
-
-1.  **Build on your Development Machine**: It's much faster to build the frontend on your main computer than on the Orange Pi.
-    *   Run the build command for this project. This will typically create a `dist` or `build` folder containing the static files.
-
-2.  **Transfer Files to Orange Pi**:
-    *   Create a `public` directory inside your project folder on the Pi. The `server.js` file is configured to serve files from this specific folder.
-        ```bash
-        # On the Orange Pi, inside ~/sulit-wifi-portal
-        mkdir public
-        ```
-    *   Use `scp` (secure copy) to transfer the contents of your build folder (from step 1) to the `public` directory on the Pi.
-        ```bash
-        # Run this command from your development machine
-        # Replace <path-to-build-folder> and <user>@<pi-ip>
-        scp -r <path-to-build-folder>/* <user>@<ORANGE_PI_IP_ADDRESS>:~/sulit-wifi-portal/public/
-        ```
-
----
-
-## Step 4: GPIO Coin Slot Integration
+## Step 3: GPIO Coin Slot Integration
 
 1.  **Identify GPIO Pin**: The Orange Pi One has a 40-pin header. You need to choose a GPIO pin to connect your coin acceptor's signal wire to. The `server.js` is pre-configured for **GPIO7**. Refer to an Orange Pi One pinout diagram if you need to use a different pin and update the `COIN_SLOT_GPIO_PIN` variable in `server.js`.
 
@@ -116,7 +92,7 @@ The React application needs to be "built" into static HTML, CSS, and JavaScript 
     *   Connect the coin acceptor's **VCC** wire to a 5V pin on the Orange Pi.
     *   Connect the coin acceptor's **Signal** wire to your chosen GPIO pin (e.g., GPIO7).
 
-3.  **Permissions**: For the Node.js server to access GPIO, you may need to add your user to the `gpio` group.
+3.  **Permissions**: For the Node.js server to access GPIO, add your user to the `gpio` group.
     ```bash
     sudo usermod -aG gpio <your-username>
     ```
@@ -124,7 +100,7 @@ The React application needs to be "built" into static HTML, CSS, and JavaScript 
 
 ---
 
-## Step 5: Captive Portal Configuration
+## Step 4: Captive Portal Configuration
 
 To make this a real hotspot, you need software to intercept traffic and redirect users to your portal. `nodogsplash` is a great choice.
 
@@ -151,7 +127,7 @@ To make this a real hotspot, you need software to intercept traffic and redirect
         ```
     *   Nodogsplash has its own web server for the portal page. We need to replace its content to redirect to our Node server.
     *   Edit the splash page: `sudo nano /etc/nodogsplash/htdocs/splash.html`
-    *   Replace the entire content of the file with a meta refresh tag. This redirect passes along crucial client information (`$mac`) that our server needs.
+    *   Replace the entire content of the file with a meta refresh tag. This redirect passes along crucial client information (`$mac`, `$ip`) that our server needs.
         ```html
         <!DOCTYPE html>
         <html>
@@ -171,9 +147,9 @@ To make this a real hotspot, you need software to intercept traffic and redirect
 
 ---
 
-## Step 6: Running the Application
+## Step 5: Running the Application
 
-1.  **Set Gemini API Key**: The Wi-Fi name generator needs your API key to be set as an environment variable.
+1.  **Set Gemini API Key (Optional)**: If you want to use the Wi-Fi name generator in the admin panel, you must set your API key as an environment variable.
     ```bash
     export API_KEY="your_gemini_api_key_here"
     ```
@@ -192,8 +168,8 @@ To make this a real hotspot, you need software to intercept traffic and redirect
     sudo npm install pm2 -g
     cd ~/sulit-wifi-portal
     
-    # Start the server with PM2. It will read the API key from your environment.
-    # Make sure you've run the 'export API_KEY' command in your session first.
+    # Start the server with PM2. If using the Gemini feature,
+    # make sure you've run 'export API_KEY' or include it here.
     API_KEY="your_gemini_api_key_here" pm2 start server.js --name "sulit-wifi"
     
     # Save the current process list to run on startup
