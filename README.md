@@ -173,8 +173,8 @@ To make this a real hotspot, you need software to intercept traffic and redirect
     cd ~/sulit-wifi-portal
     
     # Start the server with PM2. If using the Gemini feature,
-    # make sure you've run 'export API_KEY' or include it here.
-    API_KEY="your_gemini_api_key_here" pm2 start server.js --name "sulit-wifi"
+    # make sure you have already run 'export API_KEY'.
+    pm2 start server.js --name "sulit-wifi"
     
     # Save the current process list to run on startup
     pm2 save
