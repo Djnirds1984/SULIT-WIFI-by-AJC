@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getDashboardStats } from '../../services/wifiService';
 import { WifiIcon } from '../icons/WifiIcon';
@@ -24,10 +25,11 @@ const Dashboard: React.FC = () => {
         fetchStats();
     }, []);
 
-    const StatCard = ({ icon, label, value, color }: { icon: React.ReactNode, label: string, value: string | number, color: string }) => (
+    // FIX: Corrected the `icon` prop type to `React.ReactElement<any>`. The previous type `React.ReactElement` was too generic, causing a TypeScript error when cloning the element and adding a `className` prop.
+    const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>, label: string, value: string | number, color: string }) => (
         <div className="bg-slate-900/50 p-4 rounded-lg flex items-center gap-4 border-l-4" style={{ borderColor: color }}>
             <div className={`p-2 rounded-full`} style={{ backgroundColor: `${color}20` }}>
-                {React.cloneElement(icon as React.ReactElement, { className: 'w-6 h-6', style: { color } })}
+                {React.cloneElement(icon, { className: 'w-6 h-6', style: { color } })}
             </div>
             <div>
                 <p className="text-sm text-slate-400">{label}</p>

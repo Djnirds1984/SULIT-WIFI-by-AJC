@@ -1,81 +1,130 @@
 // FIX: Implemented the wifiService to handle API interactions.
 import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher } from '../types';
 
-// In a real app, these would be fetch calls to a backend API.
-// We'll simulate the API calls to our mock backend by assuming the backend logic
-// is running and responding on these endpoints. For this project, no actual server
-// is running; this is a conceptual setup. A mock service worker would typically intercept these.
+// A helper for making API calls and handling standard responses
+const apiFetch = async (url: string, options: RequestInit = {}) => {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    ...options.headers,
+  };
+
+  const response = await fetch(url, { ...options, headers });
+
+  if (!response.ok) {
+    // Try to parse a JSON error message from the backend
+    const errorData = await response.json().catch(() => ({ message: 'An unexpected error occurred.' }));
+    throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
+  }
+
+  // For 204 No Content responses, return undefined as there's no body to parse
+  if (response.status === 204) {
+    return;
+  }
+  
+  return response.json();
+};
+
+
+// --- User Session Management ---
 
 export const activateVoucher = async (code: string): Promise<WifiSession> => {
-  // This is a simplified simulation. In a real app, you'd have a server.
-  // We'll mimic the behavior here for demonstration without a running server.
-  if (code === 'INVALID') throw new Error('Invalid voucher code.');
-  if (code === 'USED') throw new Error('Voucher has already been used.');
-  
-  const mockSession = {
-      voucherCode: code,
-      startTime: Date.now(),
-      duration: 3600,
-      remainingTime: 3600
-  };
-  
-  // This is a placeholder for a real API call. Since there's no live backend,
-  // we are returning a mock response. The full backend logic is in `backend/api.ts`.
-  console.warn("Mocking API call for activateVoucher. No real backend is connected.");
-  return Promise.resolve(mockSession);
+  return apiFetch('/api/sessions/voucher', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
 };
 
-// NOTE: The functions below are designed for a conceptual backend.
-// Without a running server or a mock service worker (like MSW), they won't work as is.
-// The logic for what these endpoints *should* do is in `backend/api.ts`.
+export const activateCoinSession = async (): Promise<WifiSession> => {
+  // This endpoint on the backend should be responsible for
+  // handling the hardware interaction (e.g., waiting for a GPIO signal).
+  return apiFetch('/api/sessions/coin', {
+    method: 'POST',
+  });
+};
 
 export const checkSession = async (): Promise<WifiSession | null> => {
-  console.warn("Mocking API call for checkSession. Returning null as default.");
-  return Promise.resolve(null);
+  const response = await fetch('/api/sessions/current');
+  
+  if (response.ok) {
+    return response.json();
+  }
+  
+  if (response.status === 404) {
+    return null; // This is an expected "not found" state, not an error.
+  }
+
+  // For all other non-ok statuses, throw an error.
+  const errorData = await response.json().catch(() => ({ message: 'Failed to check session.' }));
+  throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
 };
 
+
 export const logout = async (): Promise<void> => {
-  console.warn("Mocking API call for logout.");
-  return Promise.resolve();
+  await apiFetch('/api/sessions/current', { method: 'DELETE' });
+};
+
+
+// --- Admin Panel API Calls ---
+
+// Helper for authenticated admin calls that includes the auth token
+const adminApiFetch = async (url: string, options: RequestInit = {}) => {
+  const token = sessionStorage.getItem('adminToken');
+  if (!token) {
+    throw new Error('Authentication token not found. Please log in again.');
+  }
+  
+  const authHeaders = {
+    ...options.headers,
+    'Authorization': `Bearer ${token}`,
+  };
+
+  return apiFetch(url, { ...options, headers: authHeaders });
 };
 
 export const adminLogin = async (password: string): Promise<{ token: string }> => {
-    if (password === 'admin123') {
-        console.warn("Mocking API call for adminLogin.");
-        return Promise.resolve({ token: 'mock-token' });
+    const data = await apiFetch('/api/admin/login', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+    });
+    if (data && data.token) {
+        sessionStorage.setItem('adminToken', data.token);
+    } else {
+        throw new Error("Login failed: token not provided by server.");
     }
-    throw new Error('Invalid password');
-}
+    return data;
+};
 
 export const getDashboardStats = async (): Promise<AdminDashboardStats> => {
-  console.warn("Mocking API call for getDashboardStats.");
-  return Promise.resolve({ activeSessions: 1, totalVouchersUsed: 1, totalVouchersAvailable: 2 });
+  return adminApiFetch('/api/admin/stats');
 };
 
 export const getVouchers = async (): Promise<Voucher[]> => {
-  console.warn("Mocking API call for getVouchers.");
-  return Promise.resolve([
-    { code: 'SULIT-FREE-5MIN', duration: 300, used: false },
-    { code: 'SULIT-1HR-TRIAL', duration: 3600, used: true },
-    { code: 'SULIT-GAMER-PACK', duration: 10800, used: false },
-  ]);
+  return adminApiFetch('/api/admin/vouchers');
 };
 
 export const generateNewVoucher = async (duration: number): Promise<string> => {
-    console.warn("Mocking API call for generateNewVoucher.");
-    const newCode = `SULIT-MOCK-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    return Promise.resolve(newCode);
+    // The backend is expected to return a JSON object like: { "code": "NEW-VOUCHER-CODE" }
+    const data = await adminApiFetch('/api/admin/vouchers', {
+        method: 'POST',
+        body: JSON.stringify({ duration }),
+    });
+    if (!data || !data.code) {
+        throw new Error("API did not return a new voucher code.");
+    }
+    return data.code;
 };
 
 export const getNetworkSettings = async (): Promise<NetworkSettings> => {
-    console.warn("Mocking API call for getNetworkSettings.");
-    return Promise.resolve({ ssid: 'SULIT WIFI Hotspot' });
+    return adminApiFetch('/api/admin/settings');
 };
 
 export const updateNetworkSsid = async (ssid: string): Promise<void> => {
     if (!ssid || ssid.length < 3) {
         throw new Error("SSID must be at least 3 characters long.");
     }
-    console.warn("Mocking API call for updateNetworkSsid.");
-    return Promise.resolve();
+    await adminApiFetch('/api/admin/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ ssid }),
+    });
 };

@@ -4,11 +4,12 @@ import { TicketIcon } from './icons/TicketIcon';
 
 interface PortalViewProps {
   onActivate: (code: string) => void;
+  onCoinInsert: () => void;
   isLoading: boolean;
   error: string | null;
 }
 
-const PortalView: React.FC<PortalViewProps> = ({ onActivate, isLoading, error }) => {
+const PortalView: React.FC<PortalViewProps> = ({ onActivate, onCoinInsert, isLoading, error }) => {
   const [voucherCode, setVoucherCode] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -18,11 +19,17 @@ const PortalView: React.FC<PortalViewProps> = ({ onActivate, isLoading, error })
     }
   };
 
+  const handleCoinSubmit = () => {
+    if (!isLoading) {
+        onCoinInsert();
+    }
+  }
+
   return (
     <div className="flex flex-col items-center animate-fade-in">
       <h2 className="text-2xl font-bold text-center text-sky-300">Get Connected</h2>
       <p className="mt-2 text-center text-slate-400">
-        Enter your voucher code below to activate your internet session.
+        Enter your voucher code or insert a coin to activate your internet session.
       </p>
 
       <form onSubmit={handleSubmit} className="w-full mt-6">
@@ -63,7 +70,36 @@ const PortalView: React.FC<PortalViewProps> = ({ onActivate, isLoading, error })
           )}
         </button>
       </form>
-      <p className="text-xs mt-4 text-slate-500">Don't have a code? Please approach the counter.</p>
+       <div className="flex items-center w-full my-6">
+          <div className="flex-grow border-t border-slate-600"></div>
+          <span className="flex-shrink mx-4 text-slate-500 text-sm font-semibold">OR</span>
+          <div className="flex-grow border-t border-slate-600"></div>
+      </div>
+      
+      <div className="w-full flex flex-col items-center">
+        <h3 className="text-xl font-bold text-amber-300">Pay with Coins</h3>
+        <p className="text-xs text-slate-400 mt-1 mb-4">1 Coin = 15 Minutes</p>
+        
+        <button
+            onClick={handleCoinSubmit}
+            disabled={isLoading}
+            className="group relative w-48 h-20 bg-slate-800 border-4 border-slate-600 rounded-xl flex items-center justify-center p-2 shadow-lg transition-all hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-slate-600"
+            aria-label="Insert Coin to get 15 minutes of internet"
+        >
+            <div className="w-40 h-full bg-slate-700 rounded-md flex items-center justify-center shadow-inner shadow-black/30">
+                <div className="w-2 h-10 bg-black rounded-sm shadow-inner shadow-slate-900 group-hover:bg-amber-400 group-hover:shadow-amber-500/50 transition-all"></div>
+            </div>
+             <div className="absolute -bottom-4 bg-slate-800 px-3 py-0.5 rounded-md border-2 border-slate-600 group-hover:border-amber-400 transition-all">
+                <span className="text-amber-400 font-bold text-sm tracking-wider uppercase group-hover:text-amber-300">Insert Coin</span>
+             </div>
+        </button>
+
+         <p className="text-xs mt-8 text-slate-500 text-center">
+            This simulates a physical coin slot.
+            <br />
+            Clicking will start a 15-minute session.
+        </p>
+      </div>
     </div>
   );
 };

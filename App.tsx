@@ -61,6 +61,20 @@ function App() {
     }
   };
 
+  const handleCoinInsert = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const newSession = await wifiService.activateCoinSession();
+      setSession(newSession);
+      setView('CONNECTED');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     if (session) {
       await wifiService.logout();
@@ -87,7 +101,7 @@ function App() {
           return <AdminView />;
       case 'PORTAL':
       default:
-        return <PortalView onActivate={handleActivate} isLoading={isLoading} error={error} />;
+        return <PortalView onActivate={handleActivate} onCoinInsert={handleCoinInsert} isLoading={isLoading} error={error} />;
     }
   };
   

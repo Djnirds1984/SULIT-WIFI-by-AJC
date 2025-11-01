@@ -33,6 +33,23 @@ export function activateVoucher(code: string): WifiSession {
   return session;
 }
 
+export function activateCoinSession(): WifiSession {
+  // This function would be triggered by the coin slot hardware.
+  const duration = 900; // 15 minutes per coin
+
+  const session: WifiSession = {
+    voucherCode: `COIN-${Date.now()}`,
+    startTime: Date.now(),
+    duration: duration,
+    remainingTime: duration,
+  };
+
+  // For this mock, we'll use a well-known key for the "current" session.
+  db.sessions.set('currentUser', session);
+
+  return session;
+}
+
 export function checkSession(): WifiSession | null {
     const session = db.sessions.get('currentUser');
     if (!session) {
