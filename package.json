@@ -1,22 +1,25 @@
 {
   "name": "sulit-wifi-portal",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "description": "Backend server for the SULIT WIFI hotspot portal on Orange Pi.",
+  "main": "server.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [
+    "captive-portal",
+    "hotspot",
+    "orange-pi",
+    "gpio",
+    "nodogsplash"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "react-dom": "^19.2.0",
-    "react": "^19.2.0",
-    "@google/genai": "^1.28.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "onoff": "^6.0.3"
   }
 }

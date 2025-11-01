@@ -1,5 +1,8 @@
 // SULIT WIFI Backend Server for Orange Pi One
-// This server handles API requests, manages sessions, and interacts with GPIO.
+// This server handles API requests from the frontend, manages user sessions,
+// validates vouchers, and interacts with the Orange Pi's GPIO pins for a
+// physical coin slot. It also executes 'ndsctl' commands to control the
+// nodogsplash captive portal.
 
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -19,7 +22,7 @@ const db = {
     ['SULIT-1HR-TRIAL', { code: 'SULIT-1HR-TRIAL', duration: 3600, used: true }],
     ['SULIT-GAMER-PACK', { code: 'SULIT-GAMER-PACK', duration: 10800, used: false }],
   ]),
-  // For simplicity, we'll track sessions by MAC address.
+  // For simplicity, we'll track sessions by the client's MAC address.
   sessions: new Map(),
   settings: {
     ssid: 'SULIT WIFI Hotspot',
@@ -32,12 +35,14 @@ const db = {
 
 
 // --- GPIO Setup for Coin Slot ---
+// This section initializes the GPIO pin to listen for signals from the coin acceptor.
 // IMPORTANT: Change the GPIO pin number if you use a different one.
-// Pin 7 is just an example. Refer to the Orange Pi One pinout diagram.
+// The number corresponds to the BCM GPIO number, not the physical pin number.
+// Refer to the Orange Pi One pinout diagram to find the correct GPIO number.
 const COIN_SLOT_GPIO_PIN = 7; 
 let coinSlotPin;
 
-// Gracefully handle exit to unexport GPIO
+// Gracefully handle server shutdown (Ctrl+C) to release the GPIO pin.
 process.on('SIGINT', () => {
     if (coinSlotPin) {
         coinSlotPin.unexport();
@@ -46,7 +51,11 @@ process.on('SIGINT', () => {
 });
 
 try {
+    // Check if the GPIO interface is available on the system (i.e., we are on the Orange Pi).
     if (Gpio.accessible) {
+        // Initialize the pin as an input.
+        // 'falling' edge trigger is common for coin acceptors that send a short pulse to ground.
+        // 'debounceTimeout' prevents multiple false readings from a single coin drop.
         coinSlotPin = new Gpio(COIN_SLOT_GPIO_PIN, 'in', 'falling', { debounceTimeout: 50 });
         console.log(`GPIO pin ${COIN_SLOT_GPIO_PIN} initialized for coin slot.`);
     } else {
@@ -54,7 +63,7 @@ try {
         coinSlotPin = null;
     }
 } catch (error) {
-    console.error(`Failed to initialize GPIO pin ${COIN_SLOT_GPIO_PIN}.`, error);
+    console.error(`Failed to initialize GPIO pin ${COIN_SLOT_GPIO_PIN}. Check permissions and pin number.`, error);
     coinSlotPin = null;
 }
 
@@ -62,20 +71,21 @@ try {
 // --- Middleware ---
 app.use(cors());
 app.use(bodyParser.json());
-// Serve the built React frontend from a 'public' directory
+// Serve the built React frontend from the 'public' directory
 app.use(express.static('public'));
 
 
 // --- Helper Functions ---
 const generateVoucherCode = () => `SULIT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
+// This function tells the nodogsplash captive portal to grant internet access to a user.
 const authenticateClient = (macAddress, durationSeconds) => {
     if (!macAddress) {
         console.warn("Authentication skipped: No MAC address provided.");
         return;
     }
     const durationMinutes = Math.ceil(durationSeconds / 60);
-    // Use `ndsctl` to grant internet access via nodogsplash
+    // The `ndsctl auth <mac> <minutes>` command adds a client to the allowed list.
     const command = `sudo ndsctl auth ${macAddress} ${durationMinutes}`;
     
     console.log(`Executing: ${command}`);
@@ -88,6 +98,7 @@ const authenticateClient = (macAddress, durationSeconds) => {
     });
 };
 
+// This function tells nodogsplash to immediately revoke a user's internet access.
 const deauthenticateClient = (macAddress) => {
      if (!macAddress) {
         console.warn("Deauthentication skipped: No MAC address provided.");
@@ -111,6 +122,7 @@ const deauthenticateClient = (macAddress) => {
 // Activate a session using a voucher code
 app.post('/api/sessions/voucher', (req, res) => {
   const { code } = req.body;
+  // The client's MAC address is passed as a query parameter by the nodogsplash redirect.
   const clientMac = req.query.mac;
 
   if (!code) {
@@ -150,6 +162,7 @@ app.post('/api/sessions/coin', (req, res) => {
         return res.status(503).json({ message: 'Coin slot hardware is not available.' });
     }
 
+    // This function is the callback that runs when the GPIO pin state changes (a coin is inserted).
     const handleCoinDrop = (err) => {
         if (err) {
             console.error('GPIO error:', err);
@@ -167,12 +180,14 @@ app.post('/api/sessions/coin', (req, res) => {
         db.sessions.set(clientMac, session);
         authenticateClient(clientMac, duration);
 
+        // Respond to the frontend.
         if (!res.headersSent) {
             res.status(201).json(session);
         }
         cleanup();
     };
 
+    // Set a timeout in case the user doesn't insert a coin.
     const timeout = setTimeout(() => {
         if (!res.headersSent) {
             res.status(408).json({ message: 'Request timed out. No coin inserted.' });
@@ -180,11 +195,13 @@ app.post('/api/sessions/coin', (req, res) => {
         cleanup();
     }, 30000); // 30-second timeout
 
+    // A cleanup function to remove the listener and timeout to prevent memory leaks.
     const cleanup = () => {
         clearTimeout(timeout);
         coinSlotPin.unwatch(handleCoinDrop);
     };
 
+    // Start listening for the coin drop.
     coinSlotPin.watch(handleCoinDrop);
 });
 
@@ -202,7 +219,7 @@ app.get('/api/sessions/current', (req, res) => {
 
     if (remainingTime <= 0) {
         db.sessions.delete(clientMac);
-        // No need to deauth, nodogsplash handles timeout
+        // No need to explicitly deauth, as nodogsplash handles the timeout automatically.
         return res.status(404).json({ message: 'Session has expired.' });
     }
     
@@ -214,7 +231,7 @@ app.delete('/api/sessions/current', (req, res) => {
     const clientMac = req.query.mac;
     if (db.sessions.has(clientMac)) {
         db.sessions.delete(clientMac);
-        deauthenticateClient(clientMac);
+        deauthenticateClient(clientMac); // Immediately log the user out.
         console.log(`Session ended for MAC: ${clientMac}`);
     }
     res.status(204).send();
@@ -227,6 +244,7 @@ app.delete('/api/sessions/current', (req, res) => {
 app.post('/api/admin/login', (req, res) => {
     const { password } = req.body;
     if (password === db.admin.passwordHash) {
+        // In a real app, use a secure token strategy like JWT.
         const token = `mock-token-${Date.now()}`;
         db.admin.sessionToken = token;
         return res.json({ token });
@@ -276,7 +294,8 @@ app.post('/api/admin/vouchers', adminAuth, (req, res) => {
 
 // Get network settings
 app.get('/api/admin/settings', (req, res) => {
-    // This is often needed before admin login, so we don't protect it
+    // This is often needed by the frontend before admin login to display the network name,
+    // so we don't protect it with the adminAuth middleware.
     res.json(db.settings);
 });
 
@@ -293,7 +312,8 @@ app.put('/api/admin/settings', adminAuth, (req, res) => {
 
 
 // --- Final Catch-all for Frontend Routing ---
-// This ensures that refreshing a page on the React app works correctly.
+// This ensures that refreshing a page on the React app (e.g., /#admin) still works
+// by always serving the main index.html file for any unknown GET request.
 app.get('*', (req, res) => {
   res.sendFile('index.html', { root: 'public' });
 });
