@@ -18,10 +18,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "esbuild": "^0.21.4",
     "express": "^4.19.2",
-    "onoff": "^6.0.3"
+    "onoff": "^6.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

@@ -68,7 +68,7 @@ This application creates a captive portal for a Wi-Fi hotspot. It features a uni
     git clone https://github.com/Djnirds1984/SULIT-WIFI-by-AJC.git sulit-wifi-portal
     cd sulit-wifi-portal
     ```
-2.  **Install Dependencies**: This installs all required Node.js packages, including the `esbuild` compiler for the frontend.
+2.  **Install Dependencies**: This installs all required Node.js packages for both the backend (Express, onoff) and the frontend (React, esbuild).
     ```bash
     npm install
     ```
