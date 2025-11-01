@@ -201,9 +201,11 @@ const adminAuth = (req, res, next) => {
     }
 };
 
-// --- Admin Routes ---
+// --- Admin API Router ---
+// This router consolidates all admin API endpoints.
+const adminRouter = express.Router();
 
-adminApp.post('/api/admin/login', (req, res) => {
+adminRouter.post('/login', (req, res) => {
     const { password } = req.body;
     if (password === db.admin.passwordHash) {
         const token = `mock-token-${Date.now()}`;
@@ -213,18 +215,18 @@ adminApp.post('/api/admin/login', (req, res) => {
     res.status(401).json({ message: "Invalid password" });
 });
 
-adminApp.get('/api/admin/stats', adminAuth, (req, res) => {
+adminRouter.get('/stats', adminAuth, (req, res) => {
     const activeSessions = db.sessions.size;
     const totalVouchersUsed = Array.from(db.vouchers.values()).filter(v => v.used).length;
     const totalVouchersAvailable = Array.from(db.vouchers.values()).filter(v => !v.used).length;
     res.json({ activeSessions, totalVouchersUsed, totalVouchersAvailable });
 });
 
-adminApp.get('/api/admin/vouchers', adminAuth, (req, res) => {
+adminRouter.get('/vouchers', adminAuth, (req, res) => {
     res.json(Array.from(db.vouchers.values()));
 });
 
-adminApp.post('/api/admin/vouchers', adminAuth, (req, res) => {
+adminRouter.post('/vouchers', adminAuth, (req, res) => {
     const { duration } = req.body;
     if (!duration || typeof duration !== 'number') {
         return res.status(400).json({ message: 'Valid duration in seconds is required.' });
@@ -236,11 +238,11 @@ adminApp.post('/api/admin/vouchers', adminAuth, (req, res) => {
     res.status(201).json({ code: newCode });
 });
 
-adminApp.get('/api/admin/settings', adminAuth, (req, res) => {
+adminRouter.get('/settings', adminAuth, (req, res) => {
     res.json(db.settings);
 });
 
-adminApp.put('/api/admin/settings', adminAuth, (req, res) => {
+adminRouter.put('/settings', adminAuth, (req, res) => {
     const { ssid } = req.body;
     if (!ssid || ssid.length < 3) {
         return res.status(400).json({ message: "SSID must be at least 3 characters long." });
@@ -249,6 +251,13 @@ adminApp.put('/api/admin/settings', adminAuth, (req, res) => {
     console.log(`[Admin] Network SSID updated to: ${ssid}`);
     res.status(204).send();
 });
+
+// Mount the admin router on BOTH apps.
+// This makes the admin API available on the admin server (for WAN access)
+// and on the portal server (as a fallback for LAN/misconfigured access),
+// fixing the 404 error when accessing the admin panel from the LAN.
+portalApp.use('/api/admin', adminRouter);
+adminApp.use('/api/admin', adminRouter);
 
 // Catch-all for Admin Frontend Routing
 adminApp.get('*', (req, res) => {
