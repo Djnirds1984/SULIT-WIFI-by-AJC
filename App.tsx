@@ -38,8 +38,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Check for admin view first from hash
-    if (window.location.hash === '#admin') {
+    // Check for admin view first from path
+    if (window.location.pathname === '/admin') {
       setView('ADMIN_LOGIN');
       setIsLoading(false);
     } else {
@@ -106,10 +106,9 @@ function App() {
   };
   
   const handleHeaderClick = () => {
+    // Navigate to the home page if on an admin view
     if (view === 'ADMIN_LOGIN' || view === 'ADMIN_DASHBOARD') {
-      window.location.hash = '';
-      setView('PORTAL');
-      fetchSession();
+      window.location.href = '/';
     }
   }
 
@@ -127,7 +126,7 @@ function App() {
       </div>
       <footer className="text-center mt-6 text-xs text-slate-600">
         <p>Powered by SULIT Hotspot Solutions</p>
-         <a href="#admin" onClick={() => { if (view !== 'ADMIN_LOGIN' && view !== 'ADMIN_DASHBOARD') setView('ADMIN_LOGIN')}} className="hover:text-slate-400 transition-colors">Admin Panel</a>
+         <a href="/admin" className="hover:text-slate-400 transition-colors">Admin Panel</a>
       </footer>
     </div>
   );
