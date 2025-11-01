@@ -1,119 +1,100 @@
-// FIX: Implemented mock API functions to resolve module import errors and provide backend logic.
-import { WifiSession, AdminDashboardStats } from '../types';
-import { db, Voucher, StoredSession } from './db';
+// FIX: Implemented mock API logic to be used by the backend.
+// This file would typically set up a server (e.g., Express) and define API routes.
+// For this mock environment, we'll simulate the API logic that manipulates the in-memory DB.
+// This code is conceptual and would need a server like Express or Next.js API routes to run.
 
-const getRemainingTime = (session: StoredSession): number => {
-    const elapsedSeconds = (Date.now() - session.createdAt) / 1000;
-    const remaining = Math.round(session.duration - elapsedSeconds);
-    return remaining > 0 ? remaining : 0;
+import { db } from './db';
+import { WifiSession, Voucher } from '../types';
+
+// --- Voucher/Session Logic ---
+
+export function activateVoucher(code: string): WifiSession {
+  const voucher = db.vouchers.get(code);
+  if (!voucher) {
+    throw new Error('Invalid voucher code.');
+  }
+  if (voucher.used) {
+    throw new Error('Voucher has already been used.');
+  }
+  
+  voucher.used = true;
+  db.vouchers.set(code, voucher);
+
+  const session: WifiSession = {
+    voucherCode: code,
+    startTime: Date.now(),
+    duration: voucher.duration,
+    remainingTime: voucher.duration,
+  };
+
+  // For this mock, we'll use a well-known key for the "current" session.
+  db.sessions.set('currentUser', session);
+
+  return session;
 }
 
-// --- SESSION MANAGEMENT ---
-
-export const handleActivateVoucher = (code: string): WifiSession => {
-    const voucher = db.vouchers.find(v => v.code === code.toUpperCase() && !v.used);
-    if (!voucher) {
-        throw new Error('Invalid or used voucher code.');
-    }
-
-    voucher.used = true;
-    
-    const newSession: StoredSession = {
-        sessionId: `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        createdAt: Date.now(),
-        duration: voucher.duration,
-    };
-    
-    db.sessions.push(newSession);
-    
-    return {
-        sessionId: newSession.sessionId,
-        remainingTime: getRemainingTime(newSession),
-    };
-};
-
-export const handleCheckSession = (sessionId: string): WifiSession | null => {
-    const session = db.sessions.find(s => s.sessionId === sessionId);
+export function checkSession(): WifiSession | null {
+    const session = db.sessions.get('currentUser');
     if (!session) {
         return null;
     }
+    const elapsedTime = (Date.now() - session.startTime) / 1000;
+    const remainingTime = Math.max(0, session.duration - elapsedTime);
     
-    const remainingTime = getRemainingTime(session);
-    
-    if (remainingTime > 0) {
-        return { sessionId, remainingTime };
+    if (remainingTime <= 0) {
+        db.sessions.delete('currentUser');
+        return null;
     }
     
-    // Clean up expired sessions
-    db.sessions = db.sessions.filter(s => s.sessionId !== sessionId);
-    return null;
-};
-
-export const handleEndSession = (sessionId: string): void => {
-    db.sessions = db.sessions.filter(s => s.sessionId !== sessionId);
-};
-
-// --- ADMIN FUNCTIONS ---
-
-export const handleGetNetworkSettings = (): { ssid: string } => {
-    return { ssid: db.settings.ssid };
-};
-
-export const handleUpdateNetworkSsid = (newSsid: string): { ssid: string } => {
-    if (!newSsid || newSsid.length < 3) {
-        throw new Error("SSID must be at least 3 characters long.");
-    }
-    if (newSsid.length > 32) {
-        throw new Error("SSID cannot be longer than 32 characters.");
-    }
-    db.settings.ssid = newSsid;
-    return { ssid: db.settings.ssid };
-};
-
-export const handleGetVouchers = (): Array<{ code: string; duration: number }> => {
-    // only return unused vouchers for the admin panel's "available vouchers" list
-    return db.vouchers.filter(v => !v.used).map(({ code, duration }) => ({ code, duration }));
-};
-
-const generateVoucherCode = (): string => {
-    // Generates an 8-character alphanumeric code.
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid ambiguous chars
-    let result = '';
-    for (let i = 0; i < 8; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
+    return { ...session, remainingTime: Math.round(remainingTime) };
 }
 
-export const handleGenerateNewVoucher = (durationInSeconds: number): string => {
-    let newCode: string;
-    let attempts = 0;
-    // Ensure generated code is unique, with a failsafe
-    do {
-      newCode = generateVoucherCode();
-      if (attempts++ > 10) throw new Error("Failed to generate a unique voucher code.");
-    } while (db.vouchers.some(v => v.code === newCode));
-    
+export function logout() {
+    db.sessions.delete('currentUser');
+}
+
+
+// --- Admin Logic ---
+
+export function adminLogin(password: string): { token: string } {
+    if (password === db.admin.passwordHash) {
+        const token = `mock-token-${Date.now()}`;
+        db.admin.sessionToken = token;
+        return { token };
+    }
+    throw new Error("Invalid password");
+}
+
+export function getDashboardStats() {
+    const activeSessions = db.sessions.has('currentUser') ? 1 : 0;
+    const totalVouchersUsed = Array.from(db.vouchers.values()).filter(v => v.used).length;
+    const totalVouchersAvailable = Array.from(db.vouchers.values()).filter(v => !v.used).length;
+    return { activeSessions, totalVouchersUsed, totalVouchersAvailable };
+}
+
+export function getVouchers(): Voucher[] {
+    return Array.from(db.vouchers.values());
+}
+
+export function generateNewVoucher(duration: number): { code: string } {
+    const newCode = `SULIT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const newVoucher: Voucher = {
         code: newCode,
-        duration: durationInSeconds,
+        duration,
         used: false,
     };
-    db.vouchers.push(newVoucher);
-    return newCode;
-};
+    db.vouchers.set(newCode, newVoucher);
+    return { code: newCode };
+}
 
-export const handleGetDashboardStats = (): AdminDashboardStats => {
-    // Cleanup expired sessions before calculating stats
-    db.sessions = db.sessions.filter(s => getRemainingTime(s) > 0);
+export function getNetworkSettings() {
+    return db.settings;
+}
 
-    const activeSessions = db.sessions.length;
-    const totalVouchersUsed = db.vouchers.filter(v => v.used).length;
-    const totalVouchersAvailable = db.vouchers.filter(v => !v.used).length;
-
-    return {
-        activeSessions,
-        totalVouchersUsed,
-        totalVouchersAvailable,
-    };
-};
+export function updateNetworkSsid(ssid: string) {
+    if (!ssid || ssid.length < 3) {
+        throw new Error("SSID must be at least 3 characters long.");
+    }
+    db.settings.ssid = ssid;
+    return db.settings;
+}

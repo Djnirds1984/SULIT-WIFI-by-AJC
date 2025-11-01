@@ -1,37 +1,31 @@
-// FIX: Implemented an in-memory database to simulate a backend and resolve module import errors.
-// In a real application, this would be replaced with a persistent database like PostgreSQL.
+// FIX: Created a mock in-memory database for the backend.
+import { WifiSession, Voucher, NetworkSettings } from '../types';
 
-export interface Voucher {
-    code: string;
-    duration: number; // seconds
-    used: boolean;
+interface Database {
+  vouchers: Map<string, Voucher>;
+  sessions: Map<string, WifiSession>; // using a key to identify current user's session
+  settings: NetworkSettings;
+  admin: {
+      passwordHash: string; // In a real app, use bcrypt
+      sessionToken: string | null;
+  };
 }
 
-// Storing session with creation time to calculate remaining time dynamically
-export interface StoredSession {
-    sessionId: string;
-    createdAt: number; // timestamp in ms
-    duration: number; // seconds
-}
+// Pre-populate with some data for demonstration
+const initialVouchers: Voucher[] = [
+  { code: 'SULIT-FREE-5MIN', duration: 300, used: false },
+  { code: 'SULIT-1HR-TRIAL', duration: 3600, used: true },
+  { code: 'SULIT-GAMER-PACK', duration: 10800, used: false },
+];
 
-interface NetworkSettings {
-    ssid: string;
-}
-
-interface DB {
-    vouchers: Voucher[];
-    sessions: StoredSession[];
-    settings: NetworkSettings;
-}
-
-export const db: DB = {
-    vouchers: [
-        { code: 'WIFI-1HR', duration: 3600, used: false },
-        { code: 'WIFI-DAY', duration: 86400, used: false },
-        { code: 'USED-CODE', duration: 300, used: true },
-    ],
-    sessions: [],
-    settings: {
-        ssid: 'SULIT WIFI by AJC'
-    }
+export const db: Database = {
+  vouchers: new Map(initialVouchers.map(v => [v.code, v])),
+  sessions: new Map(),
+  settings: {
+    ssid: 'SULIT WIFI Hotspot',
+  },
+  admin: {
+      passwordHash: 'admin123', // Plain text for mock simplicity
+      sessionToken: null,
+  }
 };

@@ -1,118 +1,122 @@
+// FIX: Implemented the main App component to manage application state and views.
 import React, { useState, useEffect, useCallback } from 'react';
 import { WifiSession } from './types';
-import { activateVoucher, checkSessionStatus, endSession } from './services/wifiService';
+import * as wifiService from './services/wifiService';
 import PortalView from './components/PortalView';
 import ConnectView from './components/ConnectView';
+import AdminLoginView from './components/AdminLoginView';
 import AdminView from './components/AdminView';
 import { WifiIcon } from './components/icons/WifiIcon';
-import { CogIcon } from './components/icons/CogIcon';
 
-const App: React.FC = () => {
+type AppView = 'PORTAL' | 'CONNECTED' | 'ADMIN_LOGIN' | 'ADMIN_DASHBOARD';
+
+function App() {
   const [session, setSession] = useState<WifiSession | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isCheckingStatus, setIsCheckingStatus] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAdminView, setIsAdminView] = useState<boolean>(false);
+  const [view, setView] = useState<AppView>('PORTAL');
+  const [networkSsid, setNetworkSsid] = useState('SULIT WIFI');
 
-  const handleActivateVoucher = useCallback(async (code: string) => {
-    setIsLoading(true);
-    setError(null);
+  const fetchSession = useCallback(async () => {
     try {
-      const newSession = await activateVoucher(code);
-      setSession(newSession);
-    } catch (err) {
-      setError((err as Error).message);
+      setIsLoading(true);
+      const currentSession = await wifiService.checkSession();
+      if (currentSession) {
+        setSession(currentSession);
+        setView('CONNECTED');
+      } else {
+        setSession(null);
+        // stay on portal or login view
+      }
+      const settings = await wifiService.getNetworkSettings();
+      setNetworkSsid(settings.ssid);
+    } catch (e) {
+      setError('Could not connect to the service. Please try again later.');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const handleLogout = useCallback(() => {
-    if (session?.sessionId) {
-      // Fire-and-forget call to the backend to end the session
-      endSession(session.sessionId).catch(err => console.error("Failed to end session cleanly", err));
-    }
-    setSession(null);
-  }, [session]);
-  
-  const handleAddTime = useCallback(() => {
-      setSession(null);
-  }, []);
-
-  const handleToggleAdminView = () => {
-    setIsAdminView(prev => !prev);
-  };
-
   useEffect(() => {
-    const fetchSession = async () => {
-        setIsCheckingStatus(true);
-        try {
-            const existingSession = await checkSessionStatus();
-            setSession(existingSession);
-        } catch (error) {
-            setSession(null);
-        } finally {
-            setIsCheckingStatus(false);
-        }
-    };
-    
-    fetchSession();
-  }, []);
-  
-  const renderContent = () => {
-    if (isAdminView) {
-      return <AdminView onExit={handleToggleAdminView} />;
-    }
-
-    if (isCheckingStatus) {
-        return (
-            <div className="flex flex-col items-center justify-center text-white h-60">
-                <WifiIcon className="w-12 h-12 mb-4 animate-pulse" />
-                <p className="text-xl">Checking connection status...</p>
-            </div>
-        );
-    }
-
-    if (session && session.remainingTime > 0) {
-      return <ConnectView session={session} onLogout={handleLogout} onAddTime={handleAddTime} />;
+    // Check for admin view first from hash
+    if (window.location.hash === '#admin') {
+      setView('ADMIN_LOGIN');
+      setIsLoading(false);
     } else {
-      return <PortalView onActivate={handleActivateVoucher} isLoading={isLoading} error={error} />;
+      fetchSession();
+    }
+  }, [fetchSession]);
+
+  const handleActivate = async (code: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const newSession = await wifiService.activateVoucher(code);
+      setSession(newSession);
+      setView('CONNECTED');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  const handleLogout = async () => {
+    if (session) {
+      await wifiService.logout();
+      setSession(null);
+      setView('PORTAL');
+    }
+  };
+  
+  const handleAdminLoginSuccess = () => {
+      setView('ADMIN_DASHBOARD');
+  };
+
+  const renderView = () => {
+    if (isLoading && view !== 'ADMIN_LOGIN') {
+      return <div className="text-center text-slate-400">Checking connection status...</div>;
+    }
+
+    switch (view) {
+      case 'CONNECTED':
+        return session && <ConnectView session={session} onLogout={handleLogout} onAddTime={() => setView('PORTAL')} />;
+      case 'ADMIN_LOGIN':
+          return <AdminLoginView onLoginSuccess={handleAdminLoginSuccess} />;
+      case 'ADMIN_DASHBOARD':
+          return <AdminView />;
+      case 'PORTAL':
+      default:
+        return <PortalView onActivate={handleActivate} isLoading={isLoading} error={error} />;
+    }
+  };
+  
+  const handleHeaderClick = () => {
+    if (view === 'ADMIN_LOGIN' || view === 'ADMIN_DASHBOARD') {
+      window.location.hash = '';
+      setView('PORTAL');
+      fetchSession();
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-slate-900 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white flex flex-col items-center justify-center p-4 selection:bg-sky-400 selection:text-sky-900">
-      <div className="w-full max-w-md">
-        <header className="flex flex-col items-center justify-center mb-8 text-center">
-          <WifiIcon className="w-16 h-16 mb-4 text-sky-400" />
-          <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-white">
-            {isAdminView ? 'Admin Portal' : 'SULIT WIFI Portal'}
-          </h1>
-          <p className="text-lg text-slate-400 mt-1">
-            {isAdminView ? 'Manage your hotspot settings' : 'Your Gateway to the Internet'}
-          </p>
+    <div className="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans">
+      <div className="w-full max-w-md mx-auto bg-slate-800/50 rounded-2xl shadow-2xl shadow-black/50 p-6 md:p-8 border border-slate-700 backdrop-blur-sm">
+        <header onClick={handleHeaderClick} className="flex flex-col items-center mb-6 cursor-pointer group">
+          <WifiIcon className="w-12 h-12 text-sky-400 group-hover:text-sky-300 transition-colors" />
+          <h1 className="mt-2 text-xl font-bold text-center tracking-wider text-slate-200 group-hover:text-white transition-colors">{networkSsid}</h1>
         </header>
 
-        <main className="w-full bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl shadow-black/20 p-6 md:p-8 transition-all duration-500">
-          {renderContent()}
+        <main>
+          {renderView()}
         </main>
       </div>
-
-      <footer className="mt-8 text-center text-slate-500 w-full max-w-md px-4">
-         {!isAdminView && (
-          <button 
-            onClick={handleToggleAdminView} 
-            className="text-slate-500 hover:text-sky-400 transition-colors duration-300 flex items-center justify-center gap-2 mx-auto mb-4 text-sm"
-            aria-label="Open Admin Portal"
-          >
-            <CogIcon className="w-4 h-4" />
-            Admin Login
-          </button>
-        )}
-        <p className="text-sm">&copy; {new Date().getFullYear()} SULIT WIFI by AJC. Powered by OpenWrt.</p>
+      <footer className="text-center mt-6 text-xs text-slate-600">
+        <p>Powered by SULIT Hotspot Solutions</p>
+         <a href="#admin" onClick={() => { if (view !== 'ADMIN_LOGIN' && view !== 'ADMIN_DASHBOARD') setView('ADMIN_LOGIN')}} className="hover:text-slate-400 transition-colors">Admin Panel</a>
       </footer>
     </div>
   );
-};
+}
 
 export default App;
