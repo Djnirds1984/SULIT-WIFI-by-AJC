@@ -11,6 +11,7 @@ This guide provides step-by-step instructions for deploying the SULIT WIFI hotsp
 5.  [Step 3: GPIO Coin Slot Integration](#step-3-gpio-coin-slot-integration)
 6.  [Step 4: Nginx & Captive Portal Configuration](#step-4-nginx--captive-portal-configuration)
 7.  [Step 5: Running the Application](#step-5-running-the-application)
+8.  [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -213,6 +214,14 @@ Now we configure `nodogsplash` to redirect users to our portal, which is now ser
         # as the server needs to know where to find the 'public' folder.
         pm2 start server.js --name "sulit-wifi"
         ```
+    *   **Manage the application**: Here are some essential `pm2` commands:
+        ```bash
+        pm2 list                # See status of all running applications
+        pm2 restart sulit-wifi  # Restart the application
+        pm2 stop sulit-wifi     # Stop the application
+        pm2 logs sulit-wifi     # View live logs for debugging
+        pm2 delete sulit-wifi   # Stop and remove the app from PM2's list
+        ```
     *   **Enable startup on boot**:
         ```bash
         # Save the current process list to run on startup
@@ -229,3 +238,39 @@ Now we configure `nodogsplash` to redirect users to our portal, which is now ser
     ```
 
 You should now have a fully functional Wi-Fi hotspot portal running on your Orange Pi One, accessible at `http://<YOUR_ORANGE_PI_IP>`.
+
+---
+
+## Troubleshooting
+
+### Error: `listen EADDRINUSE: address already in use :::3001`
+
+This is the most common error and means another process is already occupying port 3001. This can happen if you started the server manually (`node server.js`) and forgot to stop it, or if a previous `pm2` process failed to terminate correctly.
+
+**How to Fix:**
+
+1.  **Find the process using the port**. Use the `lsof` (list open files) command to see which process is listening on port 3001.
+    ```bash
+    sudo lsof -i :3001
+    ```
+    You will see output like this. The number you need is in the `PID` column.
+    ```
+    COMMAND   PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+    node    12345   myuser   22u  IPv6 123456      0t0  TCP *:3001 (LISTEN)
+    ```
+
+2.  **Stop the process**. Use the `kill` command with the Process ID (PID) you found. The `-9` flag ensures it's forcefully stopped.
+    ```bash
+    # Replace 12345 with the actual PID from the previous command
+    sudo kill -9 12345
+    ```
+
+3.  **Restart the application with PM2**. Now that the port is free, you can safely start your application again.
+    ```bash
+    # First, make sure no old instances are lingering in PM2
+    pm2 delete sulit-wifi
+    
+    # Now, start it fresh from your project directory
+    cd ~/sulit-wifi-portal
+    pm2 start server.js --name "sulit-wifi"
+    ```
