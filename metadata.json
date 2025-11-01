@@ -1,0 +1,5 @@
+{
+  "name": "SULIT WIFI Portal",
+  "description": "A user and admin portal for a SULIT WIFI system on OpenWrt. Users can activate internet access using voucher codes. Admins can manage network settings, generate new vouchers, and view dashboard statistics. Includes a fun Wi-Fi name generator powered by Gemini.",
+  "requestFramePermissions": []
+}
