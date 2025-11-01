@@ -1,5 +1,5 @@
 // FIX: Implemented the wifiService to handle API interactions.
-import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher } from '../types.ts';
+import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher } from '../types';
 
 // A helper for making API calls and handling standard responses
 const apiFetch = async (url: string, options: RequestInit = {}) => {

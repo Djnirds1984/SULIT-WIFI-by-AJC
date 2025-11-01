@@ -1,11 +1,11 @@
 // FIX: Implemented the AdminView component with tabbed navigation.
 import React, { useState } from 'react';
-import Dashboard from './admin/Dashboard.tsx';
-import VoucherManager from './admin/VoucherManager.tsx';
-import Settings from './admin/Settings.tsx';
-import { ChartBarIcon } from './icons/ChartBarIcon.tsx';
-import { TicketIcon } from './icons/TicketIcon.tsx';
-import { CogIcon } from './icons/CogIcon.tsx';
+import Dashboard from './admin/Dashboard';
+import VoucherManager from './admin/VoucherManager';
+import Settings from './admin/Settings';
+import { ChartBarIcon } from './icons/ChartBarIcon';
+import { TicketIcon } from './icons/TicketIcon';
+import { CogIcon } from './icons/CogIcon';
 
 type AdminTab = 'DASHBOARD' | 'VOUCHERS' | 'SETTINGS';
 

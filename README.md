@@ -22,7 +22,7 @@ This application creates a captive portal for a Wi-Fi hotspot. It features a uni
 
 - **Portal Server (Port 3001)**: Handles all user-facing interactions for the local Wi-Fi network. This includes the voucher/coin login page, session management, and hardware integration. It is designed to be private and only accessible to clients connected to the hotspot.
 - **Admin Server (Port 3002)**: A separate, dedicated server for the admin panel. This allows for secure remote management of the hotspot (dashboard, voucher generation, settings) over the WAN, without exposing the user portal to the internet.
-- **Frontend**: A single, unified React application that communicates with the appropriate backend server depending on whether it's rendering the user portal or the admin panel.
+- **Frontend**: A single React application that is compiled into a static JavaScript bundle for performance and reliability. It communicates with the appropriate backend server depending on whether it's rendering the user portal or the admin panel.
 
 ## Hardware & Software Prerequisites
 
@@ -68,7 +68,7 @@ This application creates a captive portal for a Wi-Fi hotspot. It features a uni
     git clone https://github.com/Djnirds1984/SULIT-WIFI-by-AJC.git sulit-wifi-portal
     cd sulit-wifi-portal
     ```
-2.  **Install Dependencies**: This installs all required Node.js packages.
+2.  **Install Dependencies**: This installs all required Node.js packages, including the `esbuild` compiler for the frontend.
     ```bash
     npm install
     ```
@@ -183,15 +183,15 @@ Redirect captive portal clients to the Nginx proxy on the LAN IP.
     *   **Start the server**:
         ```bash
         cd ~/sulit-wifi-portal
-        # CRITICAL: Run from the project directory to prevent file-not-found errors.
-        pm2 start server.js --name "sulit-wifi"
+        # This command runs the `start` script from package.json, which builds the frontend then starts the server.
+        pm2 start npm --name "sulit-wifi" -- start
         ```
     *   **Manage with PM2**:
         *   `pm2 list`: Show all running applications.
         *   `pm2 logs sulit-wifi`: View live logs.
         *   `pm2 stop sulit-wifi`: Stop the application.
         *   `pm2 delete sulit-wifi`: Remove the application from PM2's list.
-    *   **Applying Changes**: If you ever modify `server.js` or any other backend file, you **must** restart the application to apply the changes. The old code will continue running otherwise.
+    *   **Applying Changes**: If you modify any frontend (`.tsx`, `.ts`) or backend (`server.js`) files, you must restart the application to rebuild the code and apply the changes.
         ```bash
         pm2 restart sulit-wifi
         ```

@@ -4,7 +4,8 @@
   "description": "Backend server for the SULIT WIFI hotspot portal on Orange Pi.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --format=esm --jsx=automatic",
+    "start": "npm run build && node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -19,6 +20,7 @@
   "dependencies": {
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
+    "esbuild": "^0.21.4",
     "express": "^4.19.2",
     "onoff": "^6.0.3"
   }

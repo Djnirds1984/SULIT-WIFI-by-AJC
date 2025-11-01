@@ -1,8 +1,9 @@
 
+
 import React from 'react';
-import { WifiSession } from '../types.ts';
-import Timer from './Timer.tsx';
-import { ClockIcon } from './icons/ClockIcon.tsx';
+import { WifiSession } from '../types';
+import Timer from './Timer';
+import { ClockIcon } from './icons/ClockIcon';
 
 interface ConnectViewProps {
   session: WifiSession;

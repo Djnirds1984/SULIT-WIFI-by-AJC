@@ -9,14 +9,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
-    <!-- Add Babel Standalone for in-browser JSX/TSX transpilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
       }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
@@ -29,7 +27,6 @@
 </head>
   <body>
     <div id="root"></div>
-    <!-- Add data-type="module" to tell Babel to process ES Modules correctly -->
-    <script type="text/babel" data-type="module" data-presets="react,typescript" src="/index.tsx"></script>
+    <script type="module" src="/bundle.js"></script>
   </body>
 </html>
