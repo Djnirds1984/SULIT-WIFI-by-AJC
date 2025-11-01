@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getNetworkSettings, updateNetworkSsid } from '../../services/wifiService';
-import WifiNameGenerator from '../WifiNameGenerator';
+import { getNetworkSettings, updateNetworkSsid } from '../../services/wifiService.ts';
+import WifiNameGenerator from '../WifiNameGenerator.tsx';
 
 const Settings: React.FC = () => {
     const [ssid, setSsid] = useState('');

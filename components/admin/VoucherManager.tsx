@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getVouchers, generateNewVoucher } from '../../services/wifiService';
-import { ClipboardIcon } from '../icons/ClipboardIcon';
+import { getVouchers, generateNewVoucher } from '../../services/wifiService.ts';
+import { ClipboardIcon } from '../icons/ClipboardIcon.tsx';
 
 interface Voucher {
     code: string;

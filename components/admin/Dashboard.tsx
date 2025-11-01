@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { getDashboardStats } from '../../services/wifiService';
-import { WifiIcon } from '../icons/WifiIcon';
-import { TicketIcon } from '../icons/TicketIcon';
-import { UserGroupIcon } from '../icons/UserGroupIcon';
-import { AdminDashboardStats } from '../../types';
+import { getDashboardStats } from '../../services/wifiService.ts';
+import { WifiIcon } from '../icons/WifiIcon.tsx';
+import { TicketIcon } from '../icons/TicketIcon.tsx';
+import { UserGroupIcon } from '../icons/UserGroupIcon.tsx';
+import { AdminDashboardStats } from '../../types.ts';
 
 const Dashboard: React.FC = () => {
     const [stats, setStats] = useState<AdminDashboardStats | null>(null);

@@ -1,8 +1,8 @@
 // FIX: Implemented the AdminLoginView component.
 import React, { useState } from 'react';
-import { adminLogin } from '../services/wifiService';
-import { UserIcon } from './icons/UserIcon';
-import { LockClosedIcon } from './icons/LockClosedIcon';
+import { adminLogin } from '../services/wifiService.ts';
+import { UserIcon } from './icons/UserIcon.tsx';
+import { LockClosedIcon } from './icons/LockClosedIcon.tsx';
 
 interface AdminLoginViewProps {
     onLoginSuccess: () => void;

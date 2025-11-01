@@ -1,12 +1,12 @@
 // FIX: Implemented the main App component to manage application state and views.
 import React, { useState, useEffect, useCallback } from 'react';
-import { WifiSession } from './types';
-import * as wifiService from './services/wifiService';
-import PortalView from './components/PortalView';
-import ConnectView from './components/ConnectView';
-import AdminLoginView from './components/AdminLoginView';
-import AdminView from './components/AdminView';
-import { WifiIcon } from './components/icons/WifiIcon';
+import { WifiSession } from './types.ts';
+import * as wifiService from './services/wifiService.ts';
+import PortalView from './components/PortalView.tsx';
+import ConnectView from './components/ConnectView.tsx';
+import AdminLoginView from './components/AdminLoginView.tsx';
+import AdminView from './components/AdminView.tsx';
+import { WifiIcon } from './components/icons/WifiIcon.tsx';
 
 type AppView = 'PORTAL' | 'CONNECTED' | 'ADMIN_LOGIN' | 'ADMIN_DASHBOARD';
 

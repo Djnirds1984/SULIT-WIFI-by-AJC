@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { generateWifiName } from '../services/geminiService';
+import { generateWifiName } from '../services/geminiService.ts';
 
 interface WifiNameGeneratorProps {
     onApplyIdea: (idea: string) => void;

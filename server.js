@@ -63,10 +63,10 @@ try {
 }
 
 // --- Common Middleware ---
-// Configure express.static to serve .tsx files as JavaScript modules
+// Configure express.static to serve .tsx and .ts files as JavaScript modules
 const staticOptions = {
     setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.tsx')) {
+        if (filePath.endsWith('.tsx') || filePath.endsWith('.ts')) {
             res.setHeader('Content-Type', 'application/javascript');
         }
     }

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { TicketIcon } from './icons/TicketIcon';
+import { TicketIcon } from './icons/TicketIcon.tsx';
 
 interface PortalViewProps {
   onActivate: (code: string) => void;
