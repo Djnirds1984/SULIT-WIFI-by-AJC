@@ -57,8 +57,17 @@ export interface UpdaterStatus {
   backupDate?: string;
 }
 
+export interface DhcpConfig {
+  enabled: boolean;
+  start: string;
+  end: string;
+  lease: string;
+}
+
 export interface NetworkConfiguration {
   wanInterface: string;
+  wanStaticIpAddress: string;
+  wanDhcpServer: DhcpConfig;
   hotspotInterface: string;
   hotspotIpAddress: string;
 }

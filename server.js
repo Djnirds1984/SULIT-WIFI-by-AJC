@@ -40,6 +40,13 @@ const db = {
   },
   networkConfiguration: {
     wanInterface: 'eth0',
+    wanStaticIpAddress: '10.0.0.1',
+    wanDhcpServer: {
+      enabled: false,
+      start: '10.0.0.100',
+      end: '10.0.0.200',
+      lease: '12h',
+    },
     hotspotInterface: 'wlan0',
     hotspotIpAddress: '192.168.200.13',
   },
@@ -251,7 +258,7 @@ adminRouter.get('/vouchers', adminAuth, (req, res) => {
 
 adminRouter.post('/vouchers', adminAuth, (req, res) => {
     const { duration } = req.body;
-    if (!duration || typeof duration !== 'number') {
+    if (!duration || typeof typeof duration !== 'number') {
         return res.status(400).json({ message: 'Valid duration in seconds is required.' });
     }
     const newCode = generateVoucherCode();
@@ -280,48 +287,96 @@ adminRouter.get('/network-config', adminAuth, (req, res) => {
 });
 
 adminRouter.put('/network-config', adminAuth, (req, res) => {
-    const { wanInterface, hotspotInterface, hotspotIpAddress } = req.body;
+    const { wanInterface, hotspotInterface, hotspotIpAddress, wanStaticIpAddress, wanDhcpServer } = req.body;
+    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+
     // --- Validation ---
-    if (!wanInterface || !hotspotInterface || !hotspotIpAddress) {
-        return res.status(400).json({ message: 'WAN, Hotspot interface, and IP address are required.' });
+    if (!wanInterface || !hotspotInterface || !hotspotIpAddress || !wanStaticIpAddress) {
+        return res.status(400).json({ message: 'All interface and IP address fields are required.' });
     }
-    // FIX: Added strict validation to prevent setting WAN and Hotspot to the same interface.
-    // This is the primary safeguard against locking the user out of their device.
     if (wanInterface === hotspotInterface) {
         return res.status(400).json({ message: 'CRITICAL ERROR: WAN and Hotspot interfaces cannot be the same. Configuration rejected.' });
     }
-    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
-    if (!ipRegex.test(hotspotIpAddress)) {
+    if (!ipRegex.test(hotspotIpAddress) || !ipRegex.test(wanStaticIpAddress)) {
         return res.status(400).json({ message: 'Invalid static IP address format.' });
     }
+    if (wanDhcpServer && wanDhcpServer.enabled) {
+        if (!wanDhcpServer.start || !wanDhcpServer.end || !wanDhcpServer.lease) {
+            return res.status(400).json({ message: 'DHCP start, end, and lease time are required when enabled.' });
+        }
+        if (!ipRegex.test(wanDhcpServer.start) || !ipRegex.test(wanDhcpServer.end)) {
+            return res.status(400).json({ message: 'Invalid DHCP IP address format.' });
+        }
+    }
+
 
     // --- Save to DB ---
-    db.networkConfiguration.wanInterface = wanInterface;
-    db.networkConfiguration.hotspotInterface = hotspotInterface;
-    db.networkConfiguration.hotspotIpAddress = hotspotIpAddress;
-    console.log(`[Admin] Network config saved: WAN=${wanInterface}, Hotspot=${hotspotInterface}, IP=${hotspotIpAddress}`);
-
+    db.networkConfiguration = { wanInterface, hotspotInterface, hotspotIpAddress, wanStaticIpAddress, wanDhcpServer };
+    console.log(`[Admin] Network config saved:`, db.networkConfiguration);
+    
+    // --- System configuration paths ---
+    const isProd = fs.existsSync('/etc/nodogsplash');
+    const DNSMASQ_WAN_CONF_PATH = isProd ? '/etc/dnsmasq.d/99-sulit-wifi-wan.conf' : path.join(__dirname, '99-sulit-wifi-wan.conf.mock');
+    
     // --- Apply settings to the system ---
     // This is a "fire-and-forget" async block. The client gets a quick response,
     // and the server applies the changes in the background.
     (async () => {
         try {
-            console.log(`[Admin] Applying network changes for interface: ${hotspotInterface}`);
-            // 1. Set the static IP (this is non-persistent, but immediate)
+            console.log(`[Admin] Applying network changes...`);
+
+            // 1. Configure Hotspot Interface
+            console.log(`[Admin] Configuring Hotspot interface: ${hotspotInterface}`);
             await promiseExec(`sudo ip addr flush dev ${hotspotInterface}`).catch(e => console.warn(`Could not flush IP for ${hotspotInterface}, it might be down. Continuing...`));
             await promiseExec(`sudo ip addr add ${hotspotIpAddress}/24 dev ${hotspotInterface}`);
             console.log(`[Admin] Assigned IP ${hotspotIpAddress}/24 to ${hotspotInterface}.`);
-
-            // 2. Update nodogsplash config file
-            const ndsConfPath = '/etc/nodogsplash/nodogsplash.conf';
-            await promiseExec(`sudo sed -i 's/^GatewayInterface .*/GatewayInterface ${hotspotInterface}/' ${ndsConfPath}`);
-            console.log(`[Admin] Updated ${ndsConfPath} to use GatewayInterface ${hotspotInterface}.`);
             
-            // 3. Restart nodogsplash (as per README, kill and restart)
-            console.log('[Admin] Restarting nodogsplash service...');
-            await promiseExec('sudo pkill nodogsplash').catch(e => console.warn('nodogsplash not running, will start it.'));
-            await promiseExec('sudo nodogsplash');
-            console.log('[Admin] Nodogsplash restarted successfully.');
+            // 2. Configure WAN Interface
+            console.log(`[Admin] Configuring WAN interface: ${wanInterface}`);
+            await promiseExec(`sudo ip addr flush dev ${wanInterface}`).catch(e => console.warn(`Could not flush IP for ${wanInterface}, it might be down. Continuing...`));
+            await promiseExec(`sudo ip addr add ${wanStaticIpAddress}/24 dev ${wanInterface}`);
+            console.log(`[Admin] Assigned IP ${wanStaticIpAddress}/24 to ${wanInterface}.`);
+
+            // 3. Configure WAN DHCP Server (dnsmasq)
+            if (wanDhcpServer.enabled) {
+                console.log(`[Admin] Enabling and configuring DHCP server on ${wanInterface}`);
+                const dnsmasqConfig = [
+                    '# SULIT WIFI - WAN DHCP Configuration',
+                    '# Do not edit this file manually. It is managed by the admin panel.',
+                    `interface=${wanInterface}`,
+                    'bind-interfaces',
+                    `dhcp-range=${wanDhcpServer.start},${wanDhcpServer.end},${wanDhcpServer.lease}`,
+                    `dhcp-option=3,${wanStaticIpAddress}`, // Router option
+                    `dhcp-option=6,${wanStaticIpAddress}`, // DNS server option
+                ].join('\n');
+                await fs.promises.writeFile(DNSMASQ_WAN_CONF_PATH, dnsmasqConfig);
+                console.log(`[Admin] Wrote dnsmasq config to ${DNSMASQ_WAN_CONF_PATH}`);
+            } else {
+                console.log(`[Admin] DHCP server on ${wanInterface} is disabled. Removing config file.`);
+                await fs.promises.unlink(DNSMASQ_WAN_CONF_PATH).catch(e => {
+                    if (e.code !== 'ENOENT') console.error(`[Admin] Failed to delete dnsmasq config:`, e);
+                });
+            }
+             if (isProd) {
+                console.log('[Admin] Restarting dnsmasq service...');
+                await promiseExec('sudo systemctl restart dnsmasq');
+             } else {
+                 console.log('[Admin] Mock mode: Skipped dnsmasq restart.');
+             }
+
+
+            // 4. Update and restart nodogsplash
+            const ndsConfPath = isProd ? '/etc/nodogsplash/nodogsplash.conf' : 'mock.conf';
+            if (isProd) {
+                await promiseExec(`sudo sed -i 's/^GatewayInterface .*/GatewayInterface ${hotspotInterface}/' ${ndsConfPath}`);
+                console.log(`[Admin] Updated ${ndsConfPath} to use GatewayInterface ${hotspotInterface}.`);
+                console.log('[Admin] Restarting nodogsplash service...');
+                await promiseExec('sudo pkill nodogsplash').catch(e => console.warn('nodogsplash not running, will start it.'));
+                await promiseExec('sudo nodogsplash');
+                console.log('[Admin] Nodogsplash restarted successfully.');
+            } else {
+                 console.log('[Admin] Mock mode: Skipped nodogsplash config and restart.');
+            }
             
         } catch (error) {
             console.error('[Admin] FAILED to apply network configuration changes:', error.stderr || error.message);

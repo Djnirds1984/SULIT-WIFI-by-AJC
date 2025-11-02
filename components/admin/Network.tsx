@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getNetworkInfo, getNetworkConfiguration, updateNetworkConfiguration } from '../../services/wifiService';
-import { NetworkInfo, NetworkConfiguration, NetworkInterface } from '../../types';
+import { NetworkInfo, NetworkConfiguration, NetworkInterface, DhcpConfig } from '../../types';
 import { WrenchScrewdriverIcon } from '../icons/WrenchScrewdriverIcon';
 import { CodeBracketIcon } from '../icons/CodeBracketIcon';
 import PortalEditor from './PortalEditor';
@@ -88,18 +88,31 @@ const NetworkConfigurator: React.FC = () => {
         }
     };
     
-    const handleConfigChange = (role: keyof NetworkConfiguration, value: string) => {
+    const handleConfigChange = (field: keyof NetworkConfiguration, value: string) => {
         setConfig(prev => {
             if (!prev) return null;
-            const newConfig = { ...prev, [role]: value };
+            const newConfig = { ...prev, [field]: value };
 
-            if (role === 'wanInterface' && newConfig.wanInterface === newConfig.hotspotInterface) {
+            if (field === 'wanInterface' && newConfig.wanInterface === newConfig.hotspotInterface) {
                 const fallbackHotspot = interfaces.find(i => i.name !== newConfig.wanInterface);
                 if (fallbackHotspot) {
                     newConfig.hotspotInterface = fallbackHotspot.name;
                 }
             }
             return newConfig;
+        });
+    };
+    
+    const handleDhcpConfigChange = (field: keyof DhcpConfig, value: string | boolean) => {
+        setConfig(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                wanDhcpServer: {
+                    ...prev.wanDhcpServer,
+                    [field]: value,
+                }
+            };
         });
     };
 
@@ -119,7 +132,7 @@ const NetworkConfigurator: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <h4 className="font-semibold text-slate-300 mb-2">WAN Interface</h4>
-                        <p className="text-xs text-slate-500 mb-3">The interface connected to the internet.</p>
+                        <p className="text-xs text-slate-500 mb-3">The interface connected to the internet or your local LAN.</p>
                         <div className="space-y-2">
                             {interfaces.map(iface => (
                                 <label key={`wan-${iface.name}`} className="flex items-center gap-3 p-2 rounded-md bg-slate-900/50 has-[:checked]:bg-sky-900/50 has-[:checked]:ring-2 ring-sky-500 transition-all cursor-pointer">
@@ -162,9 +175,23 @@ const NetworkConfigurator: React.FC = () => {
                     </div>
                 </div>
 
+                 <div>
+                    <h4 className="font-semibold text-slate-300 mb-2">WAN Interface Static IP Address</h4>
+                    <p className="text-xs text-slate-500 mb-3">The local IP for your WAN port (e.g., 10.0.0.1).</p>
+                    <input
+                        type="text"
+                        value={config?.wanStaticIpAddress || ''}
+                        onChange={(e) => handleConfigChange('wanStaticIpAddress', e.target.value)}
+                        placeholder="e.g., 10.0.0.1"
+                        className="w-full bg-slate-900/50 border-2 border-slate-600 rounded-lg py-2 px-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        disabled={isSaving || !config}
+                        aria-label="WAN Static IP"
+                    />
+                </div>
+
                 <div>
-                    <h4 className="font-semibold text-slate-300 mb-2">Hotspot Static IP Address</h4>
-                    <p className="text-xs text-slate-500 mb-3">The local IP address for your hotspot portal (e.g., 192.168.200.13).</p>
+                    <h4 className="font-semibold text-slate-300 mb-2">Hotspot Interface Static IP</h4>
+                    <p className="text-xs text-slate-500 mb-3">The local IP for your hotspot portal (e.g., 192.168.200.13).</p>
                     <input
                         type="text"
                         value={config?.hotspotIpAddress || ''}
@@ -175,6 +202,38 @@ const NetworkConfigurator: React.FC = () => {
                         aria-label="Hotspot Static IP"
                     />
                 </div>
+
+                <div className="pt-6 border-t border-slate-700">
+                    <h3 className="text-xl font-bold text-indigo-400 mb-2">WAN DHCP Server</h3>
+                    <p className="text-xs text-slate-400 mb-4">Enable this to make the WAN port give IP addresses to connected devices (like another router).</p>
+                     <label className="flex items-center gap-3 p-3 rounded-md bg-slate-900/50 has-[:checked]:bg-green-900/30 has-[:checked]:ring-2 ring-green-500 transition-all cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={config?.wanDhcpServer.enabled || false}
+                            onChange={(e) => handleDhcpConfigChange('enabled', e.target.checked)}
+                            className="form-checkbox h-5 w-5 rounded text-green-600 bg-slate-700 border-slate-500 focus:ring-green-500"
+                        />
+                        <span className="text-sm font-medium text-white">Enable DHCP Server on WAN Interface</span>
+                    </label>
+
+                    {config?.wanDhcpServer.enabled && (
+                        <div className="mt-4 pl-5 space-y-4 animate-fade-in-slow">
+                             <div>
+                                <label htmlFor="dhcpStart" className="text-sm font-semibold text-slate-300">DHCP Start Range</label>
+                                <input id="dhcpStart" type="text" value={config.wanDhcpServer.start} onChange={(e) => handleDhcpConfigChange('start', e.target.value)} placeholder="e.g., 10.0.0.100" className="mt-1 w-full bg-slate-800/50 border-2 border-slate-600 rounded-lg py-2 px-4 text-white"/>
+                            </div>
+                             <div>
+                                <label htmlFor="dhcpEnd" className="text-sm font-semibold text-slate-300">DHCP End Range</label>
+                                <input id="dhcpEnd" type="text" value={config.wanDhcpServer.end} onChange={(e) => handleDhcpConfigChange('end', e.target.value)} placeholder="e.g., 10.0.0.200" className="mt-1 w-full bg-slate-800/50 border-2 border-slate-600 rounded-lg py-2 px-4 text-white"/>
+                            </div>
+                             <div>
+                                <label htmlFor="dhcpLease" className="text-sm font-semibold text-slate-300">Lease Time</label>
+                                <input id="dhcpLease" type="text" value={config.wanDhcpServer.lease} onChange={(e) => handleDhcpConfigChange('lease', e.target.value)} placeholder="e.g., 12h" className="mt-1 w-full bg-slate-800/50 border-2 border-slate-600 rounded-lg py-2 px-4 text-white"/>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
 
                 {error && <p className="text-sm text-center text-red-400 p-2 bg-red-900/30 rounded-md">{error}</p>}
                 {success && <p className="text-sm text-center text-green-400 p-2 bg-green-900/30 rounded-md">{success}</p>}
