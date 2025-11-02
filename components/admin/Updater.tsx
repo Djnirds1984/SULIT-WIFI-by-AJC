@@ -58,7 +58,7 @@ const Updater: React.FC = () => {
         if (!status?.isUpdateAvailable) return;
         
         const confirmed = window.confirm(
-            'Are you sure you want to update? The server will restart, and you will be temporarily disconnected.'
+            'This will automatically create a backup before updating. The server will restart, and you will be temporarily disconnected. Continue?'
         );
 
         if (confirmed) {
@@ -134,10 +134,10 @@ const Updater: React.FC = () => {
             <div className="text-center p-8 bg-slate-900/50 rounded-lg animate-fade-in">
                 <CogIcon className="w-12 h-12 text-sky-400 mx-auto animate-spin" />
                 <h3 className="text-xl font-bold text-sky-300 mt-4">
-                    {isUpdating ? 'Update in Progress...' : 'Restore in Progress...'}
+                    {isUpdating ? 'Safe Update in Progress...' : 'Restore in Progress...'}
                 </h3>
                 <p className="text-slate-400 mt-2">
-                    The server is applying changes and will restart shortly.
+                    {isUpdating ? 'The server is creating a backup, applying changes, and will restart shortly.' : 'The server is restoring from backup and will restart shortly.'}
                     <br />
                     Please wait a minute and then <span className="font-bold text-white">manually refresh this page</span>.
                 </p>

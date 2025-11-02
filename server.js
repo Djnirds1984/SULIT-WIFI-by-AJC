@@ -291,6 +291,31 @@ const getLatestBackup = () => {
     }
 };
 
+const createBackupProcess = async () => {
+    const now = new Date();
+    const dateString = now.toISOString().replace(/[:.]/g, '-');
+    const backupFileName = `sulit-wifi-backup-${dateString}.tar.gz`;
+    const backupFilePath = path.join(BACKUP_DIR, backupFileName);
+    const projectDir = __dirname;
+    const projectParentDir = path.dirname(projectDir);
+    const projectDirName = path.basename(projectDir);
+    
+    // First, remove any old backups to keep only the latest one.
+    const existingBackup = getLatestBackup();
+    if (existingBackup) {
+        console.log(`[Backup] Removing old backup: ${existingBackup.file}`);
+        fs.unlinkSync(path.join(BACKUP_DIR, existingBackup.file));
+    }
+
+    // Create the new backup
+    const command = `tar -czf "${backupFilePath}" -C "${projectParentDir}" "${projectDirName}"`;
+    console.log(`[Backup] Executing: ${command}`);
+    await promiseExec(command);
+    
+    console.log(`[Backup] Successfully created backup: ${backupFileName}`);
+    return backupFileName;
+};
+
 
 const gitExec = async (command) => {
     const gitRepoPath = __dirname;
@@ -351,60 +376,42 @@ adminRouter.get('/updater/status', adminAuth, async (req, res) => {
 });
 
 adminRouter.post('/updater/update', adminAuth, (req, res) => {
-    console.log('[Updater] Starting update process...');
-    res.status(202).json({ message: 'Update process started. The server will now pull the latest changes and restart.' });
+    console.log('[Updater] Starting SAFE update process...');
+    res.status(202).json({ message: 'Update process started. The server will now create a backup, pull the latest changes, and restart.' });
 
     (async () => {
         try {
-            console.log('[Updater] Pulling latest changes from origin/main...');
+            console.log('[Updater] Step 1: Creating pre-update backup...');
+            await createBackupProcess(); // This will throw on failure, stopping the process
+
+            console.log('[Updater] Step 2: Pulling latest changes from origin/main...');
             const pullOutput = await gitExec('pull origin main');
             console.log('[Updater] Git pull output:', pullOutput);
 
-            console.log('[Updater] Installing/updating dependencies...');
+            console.log('[Updater] Step 3: Installing/updating dependencies...');
             const { stdout: npmOut, stderr: npmErr } = await promiseExec('npm install');
             if (npmErr) console.warn('[Updater] NPM install stderr:', npmErr);
             console.log('[Updater] NPM install stdout:', npmOut);
             
-            console.log('[Updater] Rebuilding frontend and restarting server via PM2...');
+            console.log('[Updater] Step 4: Rebuilding frontend and restarting server via PM2...');
             const { stdout: pm2Out, stderr: pm2Err } = await promiseExec('pm2 restart sulit-wifi');
             if (pm2Err) console.error('[Updater] PM2 restart stderr:', pm2Err);
             console.log('[Updater] PM2 restart stdout:', pm2Out);
             
-            console.log('[Updater] Update process completed.');
+            console.log('[Updater] SAFE Update process completed.');
         } catch (error) {
-            console.error('[Updater] UPDATE FAILED:', error.message);
+            console.error('[Updater] SAFE UPDATE FAILED:', error.message);
         }
     })();
 });
 
 adminRouter.post('/updater/backup', adminAuth, async (req, res) => {
-    const now = new Date();
-    const dateString = now.toISOString().replace(/[:.]/g, '-');
-    const backupFileName = `sulit-wifi-backup-${dateString}.tar.gz`;
-    const backupFilePath = path.join(BACKUP_DIR, backupFileName);
-    const projectDir = __dirname;
-    const projectParentDir = path.dirname(projectDir);
-    const projectDirName = path.basename(projectDir);
-    
-    console.log('[Backup] Starting backup process...');
-
+    console.log('[Backup] Starting manual backup process...');
     try {
-        // First, remove any old backups to keep only the latest one.
-        const existingBackup = getLatestBackup();
-        if (existingBackup) {
-            console.log(`[Backup] Removing old backup: ${existingBackup.file}`);
-            fs.unlinkSync(path.join(BACKUP_DIR, existingBackup.file));
-        }
-
-        // Create the new backup
-        const command = `tar -czf "${backupFilePath}" -C "${projectParentDir}" "${projectDirName}"`;
-        console.log(`[Backup] Executing: ${command}`);
-        await promiseExec(command);
-        
-        console.log(`[Backup] Successfully created backup: ${backupFileName}`);
+        const backupFileName = await createBackupProcess();
         res.status(201).json({ message: `Backup created successfully: ${backupFileName}` });
     } catch (error) {
-        console.error('[Backup] Backup failed:', error.stderr || error.message);
+        console.error('[Backup] Manual backup failed:', error.stderr || error.message);
         res.status(500).json({ message: 'Failed to create backup. Check server logs.' });
     }
 });
