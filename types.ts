@@ -46,3 +46,11 @@ export interface NetworkInterface {
 }
 
 export type NetworkInfo = NetworkInterface[];
+
+export interface UpdaterStatus {
+  isUpdateAvailable: boolean;
+  localCommit: string;
+  remoteCommit: string;
+  commitMessage: string;
+  statusText: string;
+}

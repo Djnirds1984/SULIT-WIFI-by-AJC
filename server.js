@@ -11,6 +11,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const { Gpio } = require('onoff');
 const path = require('path');
+const fs = require('fs');
 
 const promiseExec = util.promisify(exec);
 
@@ -265,6 +266,85 @@ adminRouter.put('/settings', adminAuth, (req, res) => {
     db.settings.ssid = ssid;
     console.log(`[Admin] Network SSID updated to: ${ssid}`);
     res.status(204).send();
+});
+
+// --- Updater Routes ---
+const gitExec = async (command) => {
+    const gitRepoPath = __dirname;
+    try {
+        const { stdout, stderr } = await promiseExec(`git -C "${gitRepoPath}" ${command}`);
+        if (stderr) console.warn(`[Updater] Git command '${command}' produced stderr: ${stderr}`);
+        return stdout.trim();
+    } catch (error) {
+        console.error(`[Updater] Error executing git command '${command}':`, error.stderr || error.message);
+        throw new Error(error.stderr || 'A git command failed to execute.');
+    }
+};
+
+adminRouter.get('/updater/status', adminAuth, async (req, res) => {
+    try {
+        if (!fs.existsSync(path.join(__dirname, '.git'))) {
+            return res.status(200).json({
+                statusText: 'This is not a git repository. Cannot check for updates.',
+                isUpdateAvailable: false, localCommit: 'N/A', remoteCommit: 'N/A', commitMessage: 'Not available.'
+            });
+        }
+        
+        console.log('[Updater] Fetching remote updates...');
+        await gitExec('fetch origin');
+        
+        const localCommit = await gitExec('rev-parse HEAD');
+        const remoteCommit = await gitExec('rev-parse origin/main');
+        
+        if (localCommit === remoteCommit) {
+            return res.json({
+                statusText: 'Your application is up-to-date.', isUpdateAvailable: false,
+                localCommit: localCommit.substring(0, 7), remoteCommit: remoteCommit.substring(0, 7),
+                commitMessage: 'Already on the latest version.'
+            });
+        }
+        
+        const commitMessage = await gitExec('log origin/main -1 --pretty="format:%s (%cr)"');
+
+        res.json({
+            statusText: 'An update is available.', isUpdateAvailable: true,
+            localCommit: localCommit.substring(0, 7), remoteCommit: remoteCommit.substring(0, 7),
+            commitMessage: commitMessage,
+        });
+
+    } catch (error) {
+        res.status(500).json({ 
+            statusText: 'Error checking for updates. Check server logs.', isUpdateAvailable: false,
+            localCommit: 'Error', remoteCommit: 'Error', commitMessage: error.message,
+        });
+    }
+});
+
+adminRouter.post('/updater/update', adminAuth, (req, res) => {
+    console.log('[Updater] Starting update process...');
+    res.status(202).json({ message: 'Update process started. The server will now pull the latest changes and restart.' });
+
+    (async () => {
+        try {
+            console.log('[Updater] Pulling latest changes from origin/main...');
+            const pullOutput = await gitExec('pull origin main');
+            console.log('[Updater] Git pull output:', pullOutput);
+
+            console.log('[Updater] Installing/updating dependencies...');
+            const { stdout: npmOut, stderr: npmErr } = await promiseExec('npm install');
+            if (npmErr) console.warn('[Updater] NPM install stderr:', npmErr);
+            console.log('[Updater] NPM install stdout:', npmOut);
+            
+            console.log('[Updater] Rebuilding frontend and restarting server via PM2...');
+            const { stdout: pm2Out, stderr: pm2Err } = await promiseExec('pm2 restart sulit-wifi');
+            if (pm2Err) console.error('[Updater] PM2 restart stderr:', pm2Err);
+            console.log('[Updater] PM2 restart stdout:', pm2Out);
+            
+            console.log('[Updater] Update process completed.');
+        } catch (error) {
+            console.error('[Updater] UPDATE FAILED:', error.message);
+        }
+    })();
 });
 
 

@@ -3,11 +3,13 @@ import React, { useState } from 'react';
 import Dashboard from './admin/Dashboard';
 import VoucherManager from './admin/VoucherManager';
 import Settings from './admin/Settings';
+import Updater from './admin/Updater';
 import { ChartBarIcon } from './icons/ChartBarIcon';
 import { TicketIcon } from './icons/TicketIcon';
 import { CogIcon } from './icons/CogIcon';
+import { CloudArrowDownIcon } from './icons/CloudArrowDownIcon';
 
-type AdminTab = 'DASHBOARD' | 'VOUCHERS' | 'SETTINGS';
+type AdminTab = 'DASHBOARD' | 'VOUCHERS' | 'SETTINGS' | 'UPDATER';
 
 const AdminView: React.FC = () => {
     const [activeTab, setActiveTab] = useState<AdminTab>('DASHBOARD');
@@ -18,6 +20,8 @@ const AdminView: React.FC = () => {
                 return <VoucherManager />;
             case 'SETTINGS':
                 return <Settings />;
+            case 'UPDATER':
+                return <Updater />;
             case 'DASHBOARD':
             default:
                 return <Dashboard />;
@@ -47,6 +51,7 @@ const AdminView: React.FC = () => {
                     <SidebarLink tab="DASHBOARD" label="Dashboard" icon={<ChartBarIcon className="w-5 h-5" />} />
                     <SidebarLink tab="VOUCHERS" label="Vouchers" icon={<TicketIcon className="w-5 h-5" />} />
                     <SidebarLink tab="SETTINGS" label="Settings" icon={<CogIcon className="w-5 h-5" />} />
+                    <SidebarLink tab="UPDATER" label="Updater" icon={<CloudArrowDownIcon className="w-5 h-5" />} />
                 </nav>
 
                 <div className="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg p-4 md:p-6 min-h-[400px]">
