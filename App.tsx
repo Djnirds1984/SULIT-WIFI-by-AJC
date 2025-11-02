@@ -17,11 +17,12 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<AppView>('PORTAL');
   const [networkSsid, setNetworkSsid] = useState('SULIT WIFI');
+  const [macAddress, setMacAddress] = useState<string | null>(null);
 
-  const fetchSession = useCallback(async () => {
+  const fetchSession = useCallback(async (mac: string) => {
     try {
       setIsLoading(true);
-      const currentSession = await wifiService.checkSession();
+      const currentSession = await wifiService.checkSession(mac);
       if (currentSession) {
         setSession(currentSession);
         setView('CONNECTED');
@@ -39,20 +40,32 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Check for admin view first from path
+    const urlParams = new URLSearchParams(window.location.search);
+    const mac = urlParams.get('mac');
+    setMacAddress(mac);
+
     if (window.location.pathname === '/admin') {
       setView('ADMIN_LOGIN');
       setIsLoading(false);
     } else {
-      fetchSession();
+      if (mac) {
+        fetchSession(mac);
+      } else {
+        setError("Could not identify your device. Please reconnect to the Wi-Fi and try again.");
+        setIsLoading(false);
+      }
     }
   }, [fetchSession]);
 
   const handleActivate = async (code: string) => {
+    if (!macAddress) {
+        setError("Cannot activate voucher: device MAC address is missing.");
+        return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const newSession = await wifiService.activateVoucher(code);
+      const newSession = await wifiService.activateVoucher(code, macAddress);
       setSession(newSession);
       setView('CONNECTED');
     } catch (e) {
@@ -63,10 +76,14 @@ function App() {
   };
 
   const handleCoinInsert = async () => {
+    if (!macAddress) {
+        setError("Cannot start coin session: device MAC address is missing.");
+        return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const newSession = await wifiService.activateCoinSession();
+      const newSession = await wifiService.activateCoinSession(macAddress);
       setSession(newSession);
       setView('CONNECTED');
     } catch (e) {
@@ -77,8 +94,8 @@ function App() {
   };
 
   const handleLogout = async () => {
-    if (session) {
-      await wifiService.logout();
+    if (session && macAddress) {
+      await wifiService.logout(macAddress);
       setSession(null);
       setView('PORTAL');
     }

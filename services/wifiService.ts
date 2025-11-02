@@ -28,24 +28,29 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 
 // --- User Session Management (Portal Server on port 3001) ---
 
-export const activateVoucher = async (code: string): Promise<WifiSession> => {
-  // Use relative URL to talk to the portal server
-  return apiFetch('/api/sessions/voucher', {
+// Helper to append MAC address for portal API calls
+const portalApiUrl = (path: string, mac: string): string => {
+  // The component should ensure mac is not null or empty.
+  return `${path}?mac=${encodeURIComponent(mac)}`;
+};
+
+export const activateVoucher = async (code: string, mac: string): Promise<WifiSession> => {
+  return apiFetch(portalApiUrl('/api/sessions/voucher', mac), {
     method: 'POST',
     body: JSON.stringify({ code }),
   });
 };
 
-export const activateCoinSession = async (): Promise<WifiSession> => {
-  // Use relative URL to talk to the portal server
-  return apiFetch('/api/sessions/coin', {
+export const activateCoinSession = async (mac: string): Promise<WifiSession> => {
+  return apiFetch(portalApiUrl('/api/sessions/coin', mac), {
     method: 'POST',
   });
 };
 
-export const checkSession = async (): Promise<WifiSession | null> => {
-  // Use relative URL. Manually handle fetch to check for 404 status.
-  const response = await fetch('/api/sessions/current');
+export const checkSession = async (mac: string): Promise<WifiSession | null> => {
+  const url = portalApiUrl('/api/sessions/current', mac);
+  // Manually handle fetch to check for 404 status.
+  const response = await fetch(url);
   if (response.ok) return response.json();
   if (response.status === 404) return null;
 
@@ -53,10 +58,10 @@ export const checkSession = async (): Promise<WifiSession | null> => {
   throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
 };
 
-export const logout = async (): Promise<void> => {
-  // Use relative URL
-  await apiFetch('/api/sessions/current', { method: 'DELETE' });
+export const logout = async (mac: string): Promise<void> => {
+  await apiFetch(portalApiUrl('/api/sessions/current', mac), { method: 'DELETE' });
 };
+
 
 // --- Public APIs (Portal Server on port 3001) ---
 
