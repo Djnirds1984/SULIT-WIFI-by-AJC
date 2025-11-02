@@ -3,13 +3,16 @@ import React, { useState } from 'react';
 import Dashboard from './admin/Dashboard';
 import VoucherManager from './admin/VoucherManager';
 import Settings from './admin/Settings';
+import Network from './admin/Network';
 import Updater from './admin/Updater';
 import { ChartBarIcon } from './icons/ChartBarIcon';
 import { TicketIcon } from './icons/TicketIcon';
 import { CogIcon } from './icons/CogIcon';
 import { CloudArrowDownIcon } from './icons/CloudArrowDownIcon';
+import { WrenchScrewdriverIcon } from './icons/WrenchScrewdriverIcon';
 
-type AdminTab = 'DASHBOARD' | 'VOUCHERS' | 'SETTINGS' | 'UPDATER';
+
+type AdminTab = 'DASHBOARD' | 'VOUCHERS' | 'SETTINGS' | 'NETWORK' | 'UPDATER';
 
 const AdminView: React.FC = () => {
     const [activeTab, setActiveTab] = useState<AdminTab>('DASHBOARD');
@@ -20,6 +23,8 @@ const AdminView: React.FC = () => {
                 return <VoucherManager />;
             case 'SETTINGS':
                 return <Settings />;
+            case 'NETWORK':
+                return <Network />;
             case 'UPDATER':
                 return <Updater />;
             case 'DASHBOARD':
@@ -51,6 +56,7 @@ const AdminView: React.FC = () => {
                     <SidebarLink tab="DASHBOARD" label="Dashboard" icon={<ChartBarIcon className="w-5 h-5" />} />
                     <SidebarLink tab="VOUCHERS" label="Vouchers" icon={<TicketIcon className="w-5 h-5" />} />
                     <SidebarLink tab="SETTINGS" label="Settings" icon={<CogIcon className="w-5 h-5" />} />
+                    <SidebarLink tab="NETWORK" label="Network" icon={<WrenchScrewdriverIcon className="w-5 h-5" />} />
                     <SidebarLink tab="UPDATER" label="Updater" icon={<CloudArrowDownIcon className="w-5 h-5" />} />
                 </nav>
 

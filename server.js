@@ -37,6 +37,10 @@ const db = {
   settings: {
     ssid: 'SULIT WIFI Hotspot',
   },
+  networkConfiguration: {
+    wanInterface: 'eth0',
+    hotspotInterface: 'wlan0',
+  },
   admin: {
     passwordHash: 'admin123', // IMPORTANT: In a real app, use bcrypt!
     sessionToken: null,
@@ -266,6 +270,24 @@ adminRouter.put('/settings', adminAuth, (req, res) => {
     }
     db.settings.ssid = ssid;
     console.log(`[Admin] Network SSID updated to: ${ssid}`);
+    res.status(204).send();
+});
+
+adminRouter.get('/network-config', adminAuth, (req, res) => {
+    res.json(db.networkConfiguration);
+});
+
+adminRouter.put('/network-config', adminAuth, (req, res) => {
+    const { wanInterface, hotspotInterface } = req.body;
+    if (!wanInterface || typeof wanInterface !== 'string' || !hotspotInterface || typeof hotspotInterface !== 'string') {
+        return res.status(400).json({ message: 'Both wanInterface and hotspotInterface must be provided as strings.' });
+    }
+    if (wanInterface === hotspotInterface) {
+        return res.status(400).json({ message: 'WAN and Hotspot interfaces cannot be the same.' });
+    }
+    db.networkConfiguration.wanInterface = wanInterface;
+    db.networkConfiguration.hotspotInterface = hotspotInterface;
+    console.log(`[Admin] Network configuration updated: WAN=${wanInterface}, Hotspot=${hotspotInterface}`);
     res.status(204).send();
 });
 

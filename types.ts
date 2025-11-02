@@ -56,3 +56,8 @@ export interface UpdaterStatus {
   backupFile?: string;
   backupDate?: string;
 }
+
+export interface NetworkConfiguration {
+  wanInterface: string;
+  hotspotInterface: string;
+}

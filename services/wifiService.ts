@@ -1,5 +1,5 @@
 // FIX: Implemented the wifiService to handle API interactions.
-import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher, SystemInfo, NetworkInfo, UpdaterStatus } from '../types';
+import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher, SystemInfo, NetworkInfo, UpdaterStatus, NetworkConfiguration } from '../types';
 
 // A helper for making API calls and handling standard responses
 const apiFetch = async (url: string, options: RequestInit = {}) => {
@@ -136,6 +136,17 @@ export const updateNetworkSsid = async (ssid: string): Promise<void> => {
     await authenticatedAdminApiFetch('/api/admin/settings', {
         method: 'PUT',
         body: JSON.stringify({ ssid }),
+    });
+};
+
+export const getNetworkConfiguration = async (): Promise<NetworkConfiguration> => {
+    return authenticatedAdminApiFetch('/api/admin/network-config');
+};
+
+export const updateNetworkConfiguration = async (config: NetworkConfiguration): Promise<void> => {
+    await authenticatedAdminApiFetch('/api/admin/network-config', {
+        method: 'PUT',
+        body: JSON.stringify(config),
     });
 };
 
