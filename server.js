@@ -257,7 +257,7 @@ adminRouter.get('/vouchers', adminAuth, (req, res) => {
 
 adminRouter.post('/vouchers', adminAuth, (req, res) => {
     const { duration } = req.body;
-    if (!duration || typeof typeof duration !== 'number') {
+    if (!duration || typeof duration !== 'number') {
         return res.status(400).json({ message: 'Valid duration in seconds is required.' });
     }
     const newCode = generateVoucherCode();
@@ -412,8 +412,11 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
             // 4. Update and restart nodogsplash
             const ndsConfPath = isProd ? '/etc/nodogsplash/nodogsplash.conf' : 'mock.conf';
             if (isProd) {
-                await promiseExec(`sudo sed -i 's/^GatewayInterface .*/GatewayInterface ${hotspotInterface}/' ${ndsConfPath}`);
-                console.log(`[Admin] Updated ${ndsConfPath} to use GatewayInterface ${hotspotInterface}.`);
+                // Robustly set GatewayInterface and GatewayAddress, handling commented out lines
+                await promiseExec(`sudo sed -i 's/^#* *GatewayInterface .*/GatewayInterface ${hotspotInterface}/' ${ndsConfPath}`);
+                await promiseExec(`sudo sed -i 's/^#* *GatewayAddress .*/GatewayAddress ${hotspotIpAddress}/' ${ndsConfPath}`);
+                console.log(`[Admin] Updated ${ndsConfPath} to use GatewayInterface ${hotspotInterface} and GatewayAddress ${hotspotIpAddress}.`);
+
                 console.log('[Admin] Restarting nodogsplash service...');
                 await promiseExec('sudo pkill nodogsplash').catch(e => console.warn('nodogsplash not running, will start it.'));
                 await promiseExec('sudo nodogsplash');
