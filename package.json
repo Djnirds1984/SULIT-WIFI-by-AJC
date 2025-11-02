@@ -4,7 +4,9 @@
   "description": "Backend server for the SULIT WIFI hotspot portal on Orange Pi.",
   "main": "server.js",
   "scripts": {
-    "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --format=esm --jsx=automatic",
+    "build:css": "tailwindcss -i ./styles.css -o ./dist/styles.css",
+    "build:js": "esbuild index.tsx --bundle --outfile=dist/bundle.js --format=esm --jsx=automatic",
+    "build": "npm run build:css && npm run build:js",
     "start": "npm run build && node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -27,6 +29,7 @@
     "express": "^4.19.2",
     "onoff": "^6.0.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.3"
   }
 }
