@@ -377,7 +377,9 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
                     'except-interface=lo',
                     `interface=${hotspotInterface}`, 'bind-interfaces',
                     `listen-address=${hotspotIpAddress}`,
-                    `address=/#/${hotspotIpAddress}`,
+                    // FIX: Removed DNS hijack. It conflicts with nodogsplash's iptables-based redirection,
+                    // which is the correct mechanism for appending client details to the splash URL.
+                    // `address=/#/${hotspotIpAddress}`,
                     'dhcp-authoritative',
                     `dhcp-range=interface:${hotspotInterface},${hotspotDhcpServer.start},${hotspotDhcpServer.end},255.255.255.0,${hotspotDhcpServer.lease}`,
                     `dhcp-option=interface:${hotspotInterface},3,${hotspotIpAddress}`,
