@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getNetworkInfo, getNetworkConfiguration, updateNetworkConfiguration } from '../../services/wifiService';
 import { NetworkInfo, NetworkConfiguration, NetworkInterface } from '../../types';
+import { WrenchScrewdriverIcon } from '../icons/WrenchScrewdriverIcon';
+import { CodeBracketIcon } from '../icons/CodeBracketIcon';
+import PortalEditor from './PortalEditor';
 
 const LoadingPlaceholder = () => <div className="text-center p-4 text-slate-400 text-sm">Loading network data...</div>;
 const ErrorPlaceholder = ({ message, onRetry }: { message: string, onRetry: () => void }) => (
@@ -25,7 +28,7 @@ const InterfaceCard: React.FC<{ iface: NetworkInterface }> = ({ iface }) => (
     </div>
 );
 
-const Network: React.FC = () => {
+const NetworkConfigurator: React.FC = () => {
     const [interfaces, setInterfaces] = useState<NetworkInfo>([]);
     const [config, setConfig] = useState<NetworkConfiguration | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -43,8 +46,6 @@ const Network: React.FC = () => {
             ]);
             setInterfaces(interfacesData);
 
-            // FIX: Add logic to auto-correct an invalid configuration on load.
-            // If the saved hotspot interface is the same as the WAN, it picks the first available *different* interface.
             if (configData.wanInterface === configData.hotspotInterface) {
                 const fallbackHotspot = interfacesData.find(i => i.name !== configData.wanInterface);
                 if (fallbackHotspot) {
@@ -68,7 +69,6 @@ const Network: React.FC = () => {
         e.preventDefault();
         if (!config) return;
         
-        // This check is now redundant because of the UI change, but kept as a safeguard.
         if (config.wanInterface === config.hotspotInterface) {
             setError("WAN and Hotspot interfaces cannot be the same device.");
             return;
@@ -93,8 +93,6 @@ const Network: React.FC = () => {
             if (!prev) return null;
             const newConfig = { ...prev, [role]: value };
 
-            // FIX: If the WAN interface is changed, check if the hotspot interface is now invalid.
-            // If it is, auto-select the first valid alternative to prevent an error state.
             if (role === 'wanInterface' && newConfig.wanInterface === newConfig.hotspotInterface) {
                 const fallbackHotspot = interfaces.find(i => i.name !== newConfig.wanInterface);
                 if (fallbackHotspot) {
@@ -108,20 +106,17 @@ const Network: React.FC = () => {
     if (isLoading) return <LoadingPlaceholder />;
     if (error && !interfaces.length) return <ErrorPlaceholder message={error} onRetry={fetchData} />;
 
-    // FIX: Create a filtered list of interfaces available for the hotspot role.
-    // This list dynamically excludes the currently selected WAN interface.
     const availableHotspotInterfaces = interfaces.filter(iface => iface.name !== config?.wanInterface);
 
     return (
-        <div className="space-y-6 animate-fade-in-slow">
-            <div>
-                <h3 className="text-xl font-bold text-indigo-400 mb-2">Network Configuration</h3>
+        <div className="space-y-6">
+             <div>
+                <h3 className="text-xl font-bold text-indigo-400 mb-2">Interface Configuration</h3>
                 <p className="text-xs text-slate-400">Assign roles and IP addresses to the available network interfaces.</p>
             </div>
 
             <form onSubmit={handleSave} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* WAN Interface Selection */}
                     <div>
                         <h4 className="font-semibold text-slate-300 mb-2">WAN Interface</h4>
                         <p className="text-xs text-slate-500 mb-3">The interface connected to the internet.</p>
@@ -141,12 +136,10 @@ const Network: React.FC = () => {
                             ))}
                         </div>
                     </div>
-                     {/* Hotspot Interface Selection */}
                     <div>
                         <h4 className="font-semibold text-slate-300 mb-2">Hotspot Interface</h4>
                         <p className="text-xs text-slate-500 mb-3">The interface broadcasting the Wi-Fi for users.</p>
                          <div className="space-y-2">
-                            {/* FIX: Map over the filtered list to prevent showing the WAN interface as an option. */}
                             {availableHotspotInterfaces.map(iface => (
                                 <label key={`hotspot-${iface.name}`} className="flex items-center gap-3 p-2 rounded-md bg-slate-900/50 has-[:checked]:bg-purple-900/50 has-[:checked]:ring-2 ring-purple-500 transition-all cursor-pointer">
                                     <input
@@ -183,7 +176,6 @@ const Network: React.FC = () => {
                     />
                 </div>
 
-
                 {error && <p className="text-sm text-center text-red-400 p-2 bg-red-900/30 rounded-md">{error}</p>}
                 {success && <p className="text-sm text-center text-green-400 p-2 bg-green-900/30 rounded-md">{success}</p>}
 
@@ -201,5 +193,37 @@ const Network: React.FC = () => {
         </div>
     );
 };
+
+const Network: React.FC = () => {
+    const [subView, setSubView] = useState<'config' | 'portal'>('config');
+
+    const TabButton = ({ view, label, icon }: { view: 'config' | 'portal', label: string, icon: React.ReactNode }) => {
+        const isActive = subView === view;
+        return (
+            <button
+                onClick={() => setSubView(view)}
+                className={`flex items-center justify-center flex-1 gap-2 px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
+                    isActive ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-slate-300 hover:bg-slate-700/50'
+                }`}
+            >
+                {icon}
+                <span>{label}</span>
+            </button>
+        );
+    };
+
+    return (
+        <div className="space-y-6 animate-fade-in-slow">
+            <div className="flex items-center gap-2 p-1 bg-slate-800/50 rounded-lg border border-slate-700">
+                <TabButton view="config" label="Configuration" icon={<WrenchScrewdriverIcon className="w-5 h-5" />} />
+                <TabButton view="portal" label="Portal Editor" icon={<CodeBracketIcon className="w-5 h-5" />} />
+            </div>
+
+            {subView === 'config' && <NetworkConfigurator />}
+            {subView === 'portal' && <PortalEditor />}
+        </div>
+    );
+};
+
 
 export default Network;

@@ -150,6 +150,23 @@ export const updateNetworkConfiguration = async (config: NetworkConfiguration): 
     });
 };
 
+export const getPortalHtml = async (): Promise<{ html: string }> => {
+    return authenticatedAdminApiFetch('/api/admin/portal-html');
+};
+
+export const updatePortalHtml = async (html: string): Promise<void> => {
+    await authenticatedAdminApiFetch('/api/admin/portal-html', {
+        method: 'PUT',
+        body: JSON.stringify({ html }),
+    });
+};
+
+export const resetPortalHtml = async (): Promise<{ html: string }> => {
+    return authenticatedAdminApiFetch('/api/admin/portal-html/reset', {
+        method: 'POST',
+    });
+};
+
 export const getUpdaterStatus = async (): Promise<UpdaterStatus> => {
     return authenticatedAdminApiFetch('/api/admin/updater/status');
 };

@@ -13,6 +13,7 @@ const { Gpio } = require('onoff');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 
 const promiseExec = util.promisify(exec);
 
@@ -329,6 +330,88 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
 
     res.status(204).send();
 });
+
+// --- Portal HTML Editor Routes ---
+const SPLASH_HTML_PATH = '/etc/nodogsplash/htdocs/splash.html';
+const MOCK_SPLASH_HTML_PATH = path.join(__dirname, 'splash.html.mock');
+const isProduction = fs.existsSync('/etc/nodogsplash');
+const splashPath = isProduction ? SPLASH_HTML_PATH : MOCK_SPLASH_HTML_PATH;
+
+const getDefaultSplashContent = () => {
+    // Use the configured IP address for the redirect
+    const ipAddress = db.networkConfiguration.hotspotIpAddress || '192.168.200.13';
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0; url=http://${ipAddress}/?mac=$mac&ip=$ip&gw_id=$gw_id" />
+    <title>Connecting...</title>
+</head>
+<body>
+    <p>Please wait, you are being redirected...</p>
+</body>
+</html>`;
+};
+
+// Create mock file if it doesn't exist for development
+if (!isProduction && !fs.existsSync(splashPath)) {
+    fs.writeFileSync(splashPath, getDefaultSplashContent());
+}
+
+adminRouter.get('/portal-html', adminAuth, async (req, res) => {
+    try {
+        const content = await fs.promises.readFile(splashPath, 'utf-8');
+        res.json({ html: content });
+    } catch (error) {
+        console.error(`[Admin] Error reading portal HTML from ${splashPath}:`, error);
+        res.status(500).json({ message: 'Could not read portal HTML file.' });
+    }
+});
+
+adminRouter.put('/portal-html', adminAuth, async (req, res) => {
+    const { html } = req.body;
+    if (!html || typeof html !== 'string' || html.trim().length === 0) {
+        return res.status(400).json({ message: 'HTML content cannot be empty.' });
+    }
+
+    const tempFileName = `splash-temp-${crypto.randomBytes(8).toString('hex')}.html`;
+    const tempFilePath = path.join(os.tmpdir(), tempFileName);
+
+    try {
+        await fs.promises.writeFile(tempFilePath, html, 'utf-8');
+        const command = isProduction ? `sudo mv ${tempFilePath} ${splashPath}` : `mv ${tempFilePath} ${splashPath}`;
+        await promiseExec(command);
+
+        console.log(`[Admin] Successfully updated ${splashPath}`);
+        res.status(204).send();
+    } catch (error) {
+        console.error(`[Admin] Error updating portal HTML:`, error.stderr || error.message);
+        res.status(500).json({ message: 'Failed to update portal HTML file. Check server permissions.' });
+    } finally {
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    }
+});
+
+adminRouter.post('/portal-html/reset', adminAuth, async (req, res) => {
+    const defaultContent = getDefaultSplashContent();
+    const tempFileName = `splash-temp-${crypto.randomBytes(8).toString('hex')}.html`;
+    const tempFilePath = path.join(os.tmpdir(), tempFileName);
+
+    try {
+        await fs.promises.writeFile(tempFilePath, defaultContent, 'utf-8');
+        const command = isProduction ? `sudo mv ${tempFilePath} ${splashPath}` : `mv ${tempFilePath} ${splashPath}`;
+        await promiseExec(command);
+        
+        console.log(`[Admin] Successfully reset ${splashPath} to default.`);
+        res.json({ html: defaultContent });
+    } catch (error) {
+        console.error(`[Admin] Error resetting portal HTML:`, error.stderr || error.message);
+        res.status(500).json({ message: 'Failed to reset portal HTML file.' });
+    } finally {
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    }
+});
+
 
 // --- Updater & Backup Routes ---
 const BACKUP_DIR = path.join(os.homedir(), 'sulit-wifi-backups');
