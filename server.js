@@ -289,6 +289,15 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
     const { wanInterface, hotspotInterface, hotspotIpAddress, hotspotDhcpServer } = req.body;
     const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
 
+    // Helper function to check if two IPs are in the same /24 subnet
+    const isInSameSubnet = (ip1, ip2) => {
+        if (!ip1 || !ip2 || typeof ip1 !== 'string' || typeof ip2 !== 'string') return false;
+        const parts1 = ip1.split('.');
+        const parts2 = ip2.split('.');
+        if (parts1.length !== 4 || parts2.length !== 4) return false;
+        return parts1[0] === parts2[0] && parts1[1] === parts2[1] && parts1[2] === parts2[2];
+    };
+
     // --- Validation ---
     if (!wanInterface || !hotspotInterface || !hotspotIpAddress) {
         return res.status(400).json({ message: 'All interface and IP address fields are required.' });
@@ -305,6 +314,9 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
         }
         if (!ipRegex.test(hotspotDhcpServer.start) || !ipRegex.test(hotspotDhcpServer.end)) {
             return res.status(400).json({ message: 'Invalid DHCP IP address format.' });
+        }
+        if (!isInSameSubnet(hotspotIpAddress, hotspotDhcpServer.start) || !isInSameSubnet(hotspotIpAddress, hotspotDhcpServer.end)) {
+            return res.status(400).json({ message: `DHCP range (${hotspotDhcpServer.start} - ${hotspotDhcpServer.end}) must be in the same subnet as the Hotspot Static IP (${hotspotIpAddress}).` });
         }
     }
 
