@@ -66,8 +66,7 @@ export interface DhcpConfig {
 
 export interface NetworkConfiguration {
   wanInterface: string;
-  wanStaticIpAddress: string;
-  wanDhcpServer: DhcpConfig;
   hotspotInterface: string;
   hotspotIpAddress: string;
+  hotspotDhcpServer: DhcpConfig;
 }

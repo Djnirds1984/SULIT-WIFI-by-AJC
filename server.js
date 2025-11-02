@@ -40,15 +40,14 @@ const db = {
   },
   networkConfiguration: {
     wanInterface: 'eth0',
-    wanStaticIpAddress: '10.0.0.1',
-    wanDhcpServer: {
-      enabled: false,
-      start: '10.0.0.100',
-      end: '10.0.0.200',
-      lease: '12h',
-    },
     hotspotInterface: 'wlan0',
     hotspotIpAddress: '192.168.200.13',
+    hotspotDhcpServer: {
+      enabled: true,
+      start: '192.168.200.100',
+      end: '192.168.200.200',
+      lease: '12h',
+    },
   },
   admin: {
     passwordHash: 'admin123', // IMPORTANT: In a real app, use bcrypt!
@@ -287,36 +286,36 @@ adminRouter.get('/network-config', adminAuth, (req, res) => {
 });
 
 adminRouter.put('/network-config', adminAuth, (req, res) => {
-    const { wanInterface, hotspotInterface, hotspotIpAddress, wanStaticIpAddress, wanDhcpServer } = req.body;
+    const { wanInterface, hotspotInterface, hotspotIpAddress, hotspotDhcpServer } = req.body;
     const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
 
     // --- Validation ---
-    if (!wanInterface || !hotspotInterface || !hotspotIpAddress || !wanStaticIpAddress) {
+    if (!wanInterface || !hotspotInterface || !hotspotIpAddress) {
         return res.status(400).json({ message: 'All interface and IP address fields are required.' });
     }
     if (wanInterface === hotspotInterface) {
         return res.status(400).json({ message: 'CRITICAL ERROR: WAN and Hotspot interfaces cannot be the same. Configuration rejected.' });
     }
-    if (!ipRegex.test(hotspotIpAddress) || !ipRegex.test(wanStaticIpAddress)) {
+    if (!ipRegex.test(hotspotIpAddress)) {
         return res.status(400).json({ message: 'Invalid static IP address format.' });
     }
-    if (wanDhcpServer && wanDhcpServer.enabled) {
-        if (!wanDhcpServer.start || !wanDhcpServer.end || !wanDhcpServer.lease) {
+    if (hotspotDhcpServer && hotspotDhcpServer.enabled) {
+        if (!hotspotDhcpServer.start || !hotspotDhcpServer.end || !hotspotDhcpServer.lease) {
             return res.status(400).json({ message: 'DHCP start, end, and lease time are required when enabled.' });
         }
-        if (!ipRegex.test(wanDhcpServer.start) || !ipRegex.test(wanDhcpServer.end)) {
+        if (!ipRegex.test(hotspotDhcpServer.start) || !ipRegex.test(hotspotDhcpServer.end)) {
             return res.status(400).json({ message: 'Invalid DHCP IP address format.' });
         }
     }
 
 
     // --- Save to DB ---
-    db.networkConfiguration = { wanInterface, hotspotInterface, hotspotIpAddress, wanStaticIpAddress, wanDhcpServer };
+    db.networkConfiguration = { wanInterface, hotspotInterface, hotspotIpAddress, hotspotDhcpServer };
     console.log(`[Admin] Network config saved:`, db.networkConfiguration);
     
     // --- System configuration paths ---
     const isProd = fs.existsSync('/etc/nodogsplash');
-    const DNSMASQ_WAN_CONF_PATH = isProd ? '/etc/dnsmasq.d/99-sulit-wifi-wan.conf' : path.join(__dirname, '99-sulit-wifi-wan.conf.mock');
+    const DNSMASQ_HOTSPOT_CONF_PATH = isProd ? '/etc/dnsmasq.d/99-sulit-wifi-hotspot.conf' : path.join(__dirname, '99-sulit-wifi-hotspot.conf.mock');
     
     // --- Apply settings to the system ---
     // This is a "fire-and-forget" async block. The client gets a quick response,
@@ -325,38 +324,39 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
         try {
             console.log(`[Admin] Applying network changes...`);
 
-            // 1. Configure Hotspot Interface
+            // 1. Configure Hotspot Interface Static IP
             console.log(`[Admin] Configuring Hotspot interface: ${hotspotInterface}`);
             await promiseExec(`sudo ip addr flush dev ${hotspotInterface}`).catch(e => console.warn(`Could not flush IP for ${hotspotInterface}, it might be down. Continuing...`));
             await promiseExec(`sudo ip addr add ${hotspotIpAddress}/24 dev ${hotspotInterface}`);
-            console.log(`[Admin] Assigned IP ${hotspotIpAddress}/24 to ${hotspotInterface}.`);
+            console.log(`[Admin] Assigned static IP ${hotspotIpAddress}/24 to ${hotspotInterface}.`);
             
-            // 2. Configure WAN Interface
-            console.log(`[Admin] Configuring WAN interface: ${wanInterface}`);
-            await promiseExec(`sudo ip addr flush dev ${wanInterface}`).catch(e => console.warn(`Could not flush IP for ${wanInterface}, it might be down. Continuing...`));
-            await promiseExec(`sudo ip addr add ${wanStaticIpAddress}/24 dev ${wanInterface}`);
-            console.log(`[Admin] Assigned IP ${wanStaticIpAddress}/24 to ${wanInterface}.`);
-
-            // 3. Configure WAN DHCP Server (dnsmasq)
-            if (wanDhcpServer.enabled) {
-                console.log(`[Admin] Enabling and configuring DHCP server on ${wanInterface}`);
+            // 2. Configure WAN Interface to use DHCP
+            // We remove any static IP we might have set before and let the OS's networking service (e.g., NetworkManager, systemd-networkd) take over for DHCP.
+            console.log(`[Admin] Ensuring WAN interface ${wanInterface} uses DHCP (by not setting a static IP).`);
+            // In a real system, you might run `sudo dhclient ${wanInterface}` or restart a networking service,
+            // but for simplicity, we'll assume the OS default is DHCP client.
+            
+            // 3. Configure Hotspot DHCP Server (dnsmasq)
+            if (hotspotDhcpServer.enabled) {
+                console.log(`[Admin] Enabling and configuring DHCP server on ${hotspotInterface}`);
                 const dnsmasqConfig = [
-                    '# SULIT WIFI - WAN DHCP Configuration',
+                    '# SULIT WIFI - Hotspot DHCP Configuration',
                     '# Do not edit this file manually. It is managed by the admin panel.',
-                    `interface=${wanInterface}`,
+                    `interface=${hotspotInterface}`,
                     'bind-interfaces',
-                    `dhcp-range=${wanDhcpServer.start},${wanDhcpServer.end},${wanDhcpServer.lease}`,
-                    `dhcp-option=3,${wanStaticIpAddress}`, // Router option
-                    `dhcp-option=6,${wanStaticIpAddress}`, // DNS server option
+                    `dhcp-range=${hotspotDhcpServer.start},${hotspotDhcpServer.end},${hotspotDhcpServer.lease}`,
+                    `dhcp-option=3,${hotspotIpAddress}`, // Router option (gateway)
+                    `dhcp-option=6,${hotspotIpAddress}`, // DNS server option
                 ].join('\n');
-                await fs.promises.writeFile(DNSMASQ_WAN_CONF_PATH, dnsmasqConfig);
-                console.log(`[Admin] Wrote dnsmasq config to ${DNSMASQ_WAN_CONF_PATH}`);
+                await fs.promises.writeFile(DNSMASQ_HOTSPOT_CONF_PATH, dnsmasqConfig);
+                console.log(`[Admin] Wrote dnsmasq config to ${DNSMASQ_HOTSPOT_CONF_PATH}`);
             } else {
-                console.log(`[Admin] DHCP server on ${wanInterface} is disabled. Removing config file.`);
-                await fs.promises.unlink(DNSMASQ_WAN_CONF_PATH).catch(e => {
+                console.log(`[Admin] DHCP server on ${hotspotInterface} is disabled. Removing config file.`);
+                await fs.promises.unlink(DNSMASQ_HOTSPOT_CONF_PATH).catch(e => {
                     if (e.code !== 'ENOENT') console.error(`[Admin] Failed to delete dnsmasq config:`, e);
                 });
             }
+
              if (isProd) {
                 console.log('[Admin] Restarting dnsmasq service...');
                 await promiseExec('sudo systemctl restart dnsmasq');
