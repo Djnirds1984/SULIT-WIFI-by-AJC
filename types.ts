@@ -37,3 +37,12 @@ export interface SystemInfo {
     ram: ResourceUsage;
     disk: ResourceUsage;
 }
+
+export interface NetworkInterface {
+  name: string;
+  status: string;
+  ip4: string | null;
+  ip6: string | null;
+}
+
+export type NetworkInfo = NetworkInterface[];

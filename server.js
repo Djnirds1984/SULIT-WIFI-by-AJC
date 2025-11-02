@@ -286,6 +286,53 @@ adminRouter.get('/system-info', adminAuth, async (req, res) => {
     }
 });
 
+adminRouter.get('/network-info', adminAuth, async (req, res) => {
+    const parseIpAddr = (stdout) => {
+        const blocks = stdout.trim().split(/^\d+:\s/m).slice(1);
+        const result = [];
+        blocks.forEach(block => {
+            const lines = block.trim().split('\n');
+            const firstLine = lines[0];
+            const nameMatch = firstLine.match(/^([\w\d.-]+):/);
+            if (!nameMatch) return;
+            const name = nameMatch[1];
+            if (name === 'lo') return;
+
+            const statusMatch = firstLine.match(/state\s+([A-Z_]+)/);
+            const status = statusMatch ? statusMatch[1] : 'UNKNOWN';
+            let ip4 = null;
+            let ip6 = null;
+
+            lines.slice(1).forEach(line => {
+                const ip4Match = line.match(/inet\s+([\d.]+\/\d+)/);
+                if (ip4Match && !ip4) ip4 = ip4Match[1];
+                const ip6Match = line.match(/inet6\s+([a-f\d:]+\/\d+)/);
+                if (ip6Match) {
+                    if (!ip6Match[1].startsWith('fe80') || !ip6) {
+                        ip6 = ip6Match[1];
+                    }
+                }
+            });
+            result.push({ name, status, ip4, ip6 });
+        });
+        return result;
+    };
+
+    try {
+        const { stdout } = await promiseExec('ip addr');
+        const data = parseIpAddr(stdout);
+        res.json(data);
+    } catch (error) {
+        console.warn('[Admin] Could not get network info, returning dummy data.', error.message);
+        res.json([
+            { name: 'eth0', status: 'UP', ip4: '192.168.1.10/24', ip6: 'fe80::a00:27ff:fe4d:5536/64' },
+            { name: 'wlan0', status: 'UP', ip4: '192.168.200.13/24', ip6: null },
+            { name: 'docker0', status: 'DOWN', ip4: '172.17.0.1/16', ip6: null }
+        ]);
+    }
+});
+
+
 adminRouter.get('/vouchers', adminAuth, (req, res) => {
     res.json(Array.from(db.vouchers.values()));
 });

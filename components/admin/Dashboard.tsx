@@ -1,22 +1,66 @@
 import React, { useState, useEffect } from 'react';
-import { getDashboardStats, getSystemInfo } from '../../services/wifiService';
+import { getDashboardStats, getSystemInfo, getNetworkInfo } from '../../services/wifiService';
 import { WifiIcon } from '../icons/WifiIcon';
 import { TicketIcon } from '../icons/TicketIcon';
 import { UserGroupIcon } from '../icons/UserGroupIcon';
 import { CpuChipIcon } from '../icons/CpuChipIcon';
 import { MemoryChipIcon } from '../icons/MemoryChipIcon';
 import { SdCardIcon } from '../icons/SdCardIcon';
-import { AdminDashboardStats, SystemInfo } from '../../types';
+import { ServerStackIcon } from '../icons/ServerStackIcon';
+import { AdminDashboardStats, SystemInfo, NetworkInfo } from '../../types';
+
+// FIX: Moved helper components outside the Dashboard component to prevent re-creation on each render.
+// This stabilizes the component definitions and resolves the intermittent TypeScript errors regarding props.
+const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>, label: string, value: string | number, color: string }) => (
+    <div className="bg-slate-900/50 p-4 rounded-lg flex items-center gap-4 border-l-4" style={{ borderColor: color }}>
+        <div className={`p-2 rounded-full`} style={{ backgroundColor: `${color}20` }}>
+            {React.cloneElement(icon, { className: 'w-6 h-6', style: { color } })}
+        </div>
+        <div>
+            <p className="text-sm text-slate-400">{label}</p>
+            <p className="text-2xl font-bold text-white">{value}</p>
+        </div>
+    </div>
+);
+
+const SpecCard = ({ icon, label, children }: { icon: React.ReactElement<any>, label: string | React.ReactNode, children: React.ReactNode }) => (
+    <div className="bg-slate-900/50 p-4 rounded-lg flex gap-4">
+         <div className="p-2 rounded-full bg-slate-800/50 h-fit">
+            {React.cloneElement(icon, { className: 'w-6 h-6 text-indigo-400' })}
+        </div>
+        <div className="w-full">
+            <div className="text-sm text-slate-400 font-semibold">{label}</div>
+            <div className="mt-1">
+                {children}
+            </div>
+        </div>
+    </div>
+);
+
+const ProgressBar = ({ value, total, colorClass }: { value: number, total: number, colorClass: string}) => {
+    const percentage = total > 0 ? (value / total) * 100 : 0;
+    return (
+         <div className="w-full bg-slate-700 rounded-full h-2.5">
+            <div className={`${colorClass} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
+        </div>
+    )
+}
+
+const LoadingPlaceholder = () => <div className="text-center p-4 text-slate-400 text-sm">Loading...</div>;
+const ErrorPlaceholder = ({ message }: { message: string }) => <div className="text-center p-4 text-red-400 text-sm">{message}</div>;
 
 const Dashboard: React.FC = () => {
     const [stats, setStats] = useState<AdminDashboardStats | null>(null);
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+    const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
     
     const [isStatsLoading, setIsStatsLoading] = useState(true);
     const [isSystemInfoLoading, setIsSystemInfoLoading] = useState(true);
+    const [isNetworkInfoLoading, setIsNetworkInfoLoading] = useState(true);
     
     const [statsError, setStatsError] = useState<string | null>(null);
     const [systemInfoError, setSystemInfoError] = useState<string | null>(null);
+    const [networkInfoError, setNetworkInfoError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchStats = async () => {
@@ -46,48 +90,25 @@ const Dashboard: React.FC = () => {
                 setIsSystemInfoLoading(false);
             }
         };
+        
+        const fetchNetworkInfo = async () => {
+            setIsNetworkInfoLoading(true);
+            setNetworkInfoError(null);
+            try {
+                const networkInfoData = await getNetworkInfo();
+                setNetworkInfo(networkInfoData);
+            } catch (error) {
+                console.error("Failed to fetch network info", error);
+                setNetworkInfoError("Could not load network information.");
+            } finally {
+                setIsNetworkInfoLoading(false);
+            }
+        };
 
         fetchStats();
         fetchSystemInfo();
+        fetchNetworkInfo();
     }, []);
-
-    const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>, label: string, value: string | number, color: string }) => (
-        <div className="bg-slate-900/50 p-4 rounded-lg flex items-center gap-4 border-l-4" style={{ borderColor: color }}>
-            <div className={`p-2 rounded-full`} style={{ backgroundColor: `${color}20` }}>
-                {React.cloneElement(icon, { className: 'w-6 h-6', style: { color } })}
-            </div>
-            <div>
-                <p className="text-sm text-slate-400">{label}</p>
-                <p className="text-2xl font-bold text-white">{value}</p>
-            </div>
-        </div>
-    );
-
-    const SpecCard = ({ icon, label, children }: { icon: React.ReactElement<any>, label: string, children: React.ReactNode }) => (
-        <div className="bg-slate-900/50 p-4 rounded-lg flex gap-4">
-             <div className="p-2 rounded-full bg-slate-800/50 h-fit-content">
-                {React.cloneElement(icon, { className: 'w-6 h-6 text-indigo-400' })}
-            </div>
-            <div className="w-full">
-                <p className="text-sm text-slate-400 font-semibold">{label}</p>
-                <div className="mt-1">
-                    {children}
-                </div>
-            </div>
-        </div>
-    );
-    
-    const ProgressBar = ({ value, total, colorClass }: { value: number, total: number, colorClass: string}) => {
-        const percentage = total > 0 ? (value / total) * 100 : 0;
-        return (
-             <div className="w-full bg-slate-700 rounded-full h-2.5">
-                <div className={`${colorClass} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
-            </div>
-        )
-    }
-    
-    const LoadingPlaceholder = () => <div className="text-center p-4 text-slate-400 text-sm">Loading...</div>;
-    const ErrorPlaceholder = ({ message }: { message: string }) => <div className="text-center p-4 text-red-400 text-sm">{message}</div>;
 
     return (
         <div className="space-y-6 animate-fade-in-slow">
@@ -118,6 +139,29 @@ const Dashboard: React.FC = () => {
                             <p className="text-sm font-bold text-white mb-2">{(systemInfo.disk.usedMb / 1024).toFixed(1)} GB / {(systemInfo.disk.totalMb / 1024).toFixed(1)} GB</p>
                             <ProgressBar value={systemInfo.disk.usedMb} total={systemInfo.disk.totalMb} colorClass="bg-emerald-500" />
                         </SpecCard>
+                    </div>
+                )}
+            </div>
+
+            <div>
+                <h3 className="text-xl font-bold text-indigo-400 mb-4">Network Interfaces</h3>
+                {isNetworkInfoLoading ? <LoadingPlaceholder /> : networkInfoError ? <ErrorPlaceholder message={networkInfoError} /> : networkInfo && (
+                    <div className="space-y-4">
+                        {networkInfo.map(iface => (
+                            <SpecCard key={iface.name} icon={<ServerStackIcon />} label={
+                                <div className="flex items-center gap-2">
+                                    <span className={`w-3 h-3 rounded-full ${iface.status === 'UP' ? 'bg-green-500' : 'bg-slate-500'}`}></span>
+                                    <p className="text-md font-bold text-white truncate">{iface.name}</p>
+                                </div>
+                            }>
+                                <div className="text-xs text-slate-300 font-mono space-y-1">
+                                    {iface.ip4 && <p>IPv4: {iface.ip4}</p>}
+                                    {iface.ip6 && <p>IPv6: {iface.ip6}</p>}
+                                    {!iface.ip4 && !iface.ip6 && <p className="text-slate-500">No IP addresses assigned</p>}
+                                </div>
+                            </SpecCard>
+                        ))}
+                         {networkInfo.length === 0 && <p className="text-center text-sm text-slate-500 py-4">No network interfaces found.</p>}
                     </div>
                 )}
             </div>
