@@ -358,7 +358,7 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
                     `listen-address=${hotspotIpAddress}`,
                     '',
                     '# DHCP configuration exclusively for the hotspot interface.',
-                    `dhcp-range=interface:${hotspotInterface},${hotspotDhcpServer.start},${hotspotDhcpServer.end},${hotspotDhcpServer.lease}`,
+                    `dhcp-range=interface:${hotspotInterface},${hotspotDhcpServer.start},${hotspotDhcpServer.end},255.255.255.0,${hotspotDhcpServer.lease}`,
                     `dhcp-option=interface:${hotspotInterface},3,${hotspotIpAddress}`, // Router (Gateway)
                     `dhcp-option=interface:${hotspotInterface},6,${hotspotIpAddress}`, // DNS Server
                 ].join('\n');
