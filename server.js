@@ -40,6 +40,7 @@ const db = {
   networkConfiguration: {
     wanInterface: 'eth0',
     hotspotInterface: 'wlan0',
+    hotspotIpAddress: '192.168.200.13',
   },
   admin: {
     passwordHash: 'admin123', // IMPORTANT: In a real app, use bcrypt!
@@ -278,16 +279,52 @@ adminRouter.get('/network-config', adminAuth, (req, res) => {
 });
 
 adminRouter.put('/network-config', adminAuth, (req, res) => {
-    const { wanInterface, hotspotInterface } = req.body;
-    if (!wanInterface || typeof wanInterface !== 'string' || !hotspotInterface || typeof hotspotInterface !== 'string') {
-        return res.status(400).json({ message: 'Both wanInterface and hotspotInterface must be provided as strings.' });
+    const { wanInterface, hotspotInterface, hotspotIpAddress } = req.body;
+    // --- Validation ---
+    if (!wanInterface || !hotspotInterface || !hotspotIpAddress) {
+        return res.status(400).json({ message: 'WAN, Hotspot interface, and IP address are required.' });
     }
     if (wanInterface === hotspotInterface) {
         return res.status(400).json({ message: 'WAN and Hotspot interfaces cannot be the same.' });
     }
+    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+    if (!ipRegex.test(hotspotIpAddress)) {
+        return res.status(400).json({ message: 'Invalid static IP address format.' });
+    }
+
+    // --- Save to DB ---
     db.networkConfiguration.wanInterface = wanInterface;
     db.networkConfiguration.hotspotInterface = hotspotInterface;
-    console.log(`[Admin] Network configuration updated: WAN=${wanInterface}, Hotspot=${hotspotInterface}`);
+    db.networkConfiguration.hotspotIpAddress = hotspotIpAddress;
+    console.log(`[Admin] Network config saved: WAN=${wanInterface}, Hotspot=${hotspotInterface}, IP=${hotspotIpAddress}`);
+
+    // --- Apply settings to the system ---
+    // This is a "fire-and-forget" async block. The client gets a quick response,
+    // and the server applies the changes in the background.
+    (async () => {
+        try {
+            console.log(`[Admin] Applying network changes for interface: ${hotspotInterface}`);
+            // 1. Set the static IP (this is non-persistent, but immediate)
+            await promiseExec(`sudo ip addr flush dev ${hotspotInterface}`).catch(e => console.warn(`Could not flush IP for ${hotspotInterface}, it might be down. Continuing...`));
+            await promiseExec(`sudo ip addr add ${hotspotIpAddress}/24 dev ${hotspotInterface}`);
+            console.log(`[Admin] Assigned IP ${hotspotIpAddress}/24 to ${hotspotInterface}.`);
+
+            // 2. Update nodogsplash config file
+            const ndsConfPath = '/etc/nodogsplash/nodogsplash.conf';
+            await promiseExec(`sudo sed -i 's/^GatewayInterface .*/GatewayInterface ${hotspotInterface}/' ${ndsConfPath}`);
+            console.log(`[Admin] Updated ${ndsConfPath} to use GatewayInterface ${hotspotInterface}.`);
+            
+            // 3. Restart nodogsplash (as per README, kill and restart)
+            console.log('[Admin] Restarting nodogsplash service...');
+            await promiseExec('sudo pkill nodogsplash').catch(e => console.warn('nodogsplash not running, will start it.'));
+            await promiseExec('sudo nodogsplash');
+            console.log('[Admin] Nodogsplash restarted successfully.');
+            
+        } catch (error) {
+            console.error('[Admin] FAILED to apply network configuration changes:', error.stderr || error.message);
+        }
+    })();
+
     res.status(204).send();
 });
 

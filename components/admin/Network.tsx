@@ -68,12 +68,12 @@ const Network: React.FC = () => {
         setSuccess(null);
         try {
             await updateNetworkConfiguration(config);
-            setSuccess('Network configuration saved successfully!');
+            setSuccess('Network configuration saved! The new settings are being applied to the system.');
         } catch (err) {
             setError((err as Error).message);
         } finally {
             setIsSaving(false);
-            setTimeout(() => setSuccess(null), 3000);
+            setTimeout(() => setSuccess(null), 4000);
         }
     };
     
@@ -88,7 +88,7 @@ const Network: React.FC = () => {
         <div className="space-y-6 animate-fade-in-slow">
             <div>
                 <h3 className="text-xl font-bold text-indigo-400 mb-2">Network Configuration</h3>
-                <p className="text-xs text-slate-400">Assign roles to the available network interfaces.</p>
+                <p className="text-xs text-slate-400">Assign roles and IP addresses to the available network interfaces.</p>
             </div>
 
             <form onSubmit={handleSave} className="space-y-6">
@@ -135,11 +135,26 @@ const Network: React.FC = () => {
                     </div>
                 </div>
 
-                {error && <p className="text-sm text-center text-red-400">{error}</p>}
-                {success && <p className="text-sm text-center text-green-400">{success}</p>}
+                <div>
+                    <h4 className="font-semibold text-slate-300 mb-2">Hotspot Static IP Address</h4>
+                    <p className="text-xs text-slate-500 mb-3">The local IP address for your hotspot portal (e.g., 192.168.200.13).</p>
+                    <input
+                        type="text"
+                        value={config?.hotspotIpAddress || ''}
+                        onChange={(e) => handleConfigChange('hotspotIpAddress', e.target.value)}
+                        placeholder="e.g., 192.168.200.13"
+                        className="w-full bg-slate-900/50 border-2 border-slate-600 rounded-lg py-2 px-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        disabled={isSaving || !config}
+                        aria-label="Hotspot Static IP"
+                    />
+                </div>
+
+
+                {error && <p className="text-sm text-center text-red-400 p-2 bg-red-900/30 rounded-md">{error}</p>}
+                {success && <p className="text-sm text-center text-green-400 p-2 bg-green-900/30 rounded-md">{success}</p>}
 
                 <button type="submit" disabled={isSaving || !config} className="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-wait">
-                    {isSaving ? 'Saving...' : 'Save Changes'}
+                    {isSaving ? 'Applying Settings...' : 'Save & Apply Changes'}
                 </button>
             </form>
 

@@ -27,6 +27,8 @@ const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>
 interface SpecCardProps {
     icon: React.ReactElement<any>;
     label: string | React.ReactNode;
+    // FIX: Added children property to fix type errors where the component was used with child elements.
+    children: React.ReactNode;
 }
 
 const SpecCard: React.FC<SpecCardProps> = ({ icon, label, children }) => (

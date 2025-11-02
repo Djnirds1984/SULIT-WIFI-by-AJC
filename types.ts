@@ -60,4 +60,5 @@ export interface UpdaterStatus {
 export interface NetworkConfiguration {
   wanInterface: string;
   hotspotInterface: string;
+  hotspotIpAddress: string;
 }
