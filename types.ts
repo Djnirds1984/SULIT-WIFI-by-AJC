@@ -53,4 +53,6 @@ export interface UpdaterStatus {
   remoteCommit: string;
   commitMessage: string;
   statusText: string;
+  backupFile?: string;
+  backupDate?: string;
 }

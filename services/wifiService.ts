@@ -148,3 +148,21 @@ export const triggerUpdate = async (): Promise<{ message: string }> => {
         method: 'POST',
     });
 };
+
+export const createBackup = async (): Promise<{ message: string }> => {
+    return authenticatedAdminApiFetch('/api/admin/updater/backup', {
+        method: 'POST',
+    });
+};
+
+export const restoreFromBackup = async (): Promise<{ message: string }> => {
+    return authenticatedAdminApiFetch('/api/admin/updater/restore', {
+        method: 'POST',
+    });
+};
+
+export const deleteBackup = async (): Promise<{ message: string }> => {
+    return authenticatedAdminApiFetch('/api/admin/updater/backup', {
+        method: 'DELETE',
+    });
+};

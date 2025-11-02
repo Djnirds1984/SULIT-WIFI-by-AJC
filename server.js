@@ -12,6 +12,7 @@ const util = require('util');
 const { Gpio } = require('onoff');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const promiseExec = util.promisify(exec);
 
@@ -268,7 +269,29 @@ adminRouter.put('/settings', adminAuth, (req, res) => {
     res.status(204).send();
 });
 
-// --- Updater Routes ---
+// --- Updater & Backup Routes ---
+const BACKUP_DIR = path.join(os.homedir(), 'sulit-wifi-backups');
+if (!fs.existsSync(BACKUP_DIR)) {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+
+const getLatestBackup = () => {
+    try {
+        const files = fs.readdirSync(BACKUP_DIR)
+            .filter(file => file.startsWith('sulit-wifi-backup-') && file.endsWith('.tar.gz'))
+            .map(file => ({
+                file,
+                time: fs.statSync(path.join(BACKUP_DIR, file)).mtime.getTime()
+            }))
+            .sort((a, b) => b.time - a.time);
+        return files.length > 0 ? files[0] : null;
+    } catch (error) {
+        console.error('[Backup] Error reading backup directory:', error);
+        return null;
+    }
+};
+
+
 const gitExec = async (command) => {
     const gitRepoPath = __dirname;
     try {
@@ -283,34 +306,41 @@ const gitExec = async (command) => {
 
 adminRouter.get('/updater/status', adminAuth, async (req, res) => {
     try {
-        if (!fs.existsSync(path.join(__dirname, '.git'))) {
-            return res.status(200).json({
-                statusText: 'This is not a git repository. Cannot check for updates.',
-                isUpdateAvailable: false, localCommit: 'N/A', remoteCommit: 'N/A', commitMessage: 'Not available.'
-            });
-        }
-        
-        console.log('[Updater] Fetching remote updates...');
-        await gitExec('fetch origin');
-        
-        const localCommit = await gitExec('rev-parse HEAD');
-        const remoteCommit = await gitExec('rev-parse origin/main');
-        
-        if (localCommit === remoteCommit) {
-            return res.json({
-                statusText: 'Your application is up-to-date.', isUpdateAvailable: false,
-                localCommit: localCommit.substring(0, 7), remoteCommit: remoteCommit.substring(0, 7),
-                commitMessage: 'Already on the latest version.'
-            });
-        }
-        
-        const commitMessage = await gitExec('log origin/main -1 --pretty="format:%s (%cr)"');
+        let updateInfo = {
+            isUpdateAvailable: false, localCommit: 'N/A', remoteCommit: 'N/A',
+            commitMessage: 'Not available.', statusText: 'This is not a git repository. Cannot check for updates.'
+        };
 
-        res.json({
-            statusText: 'An update is available.', isUpdateAvailable: true,
-            localCommit: localCommit.substring(0, 7), remoteCommit: remoteCommit.substring(0, 7),
-            commitMessage: commitMessage,
-        });
+        if (fs.existsSync(path.join(__dirname, '.git'))) {
+            console.log('[Updater] Fetching remote updates...');
+            await gitExec('fetch origin');
+            
+            const localCommit = await gitExec('rev-parse HEAD');
+            const remoteCommit = await gitExec('rev-parse origin/main');
+            
+            if (localCommit === remoteCommit) {
+                updateInfo = {
+                    statusText: 'Your application is up-to-date.', isUpdateAvailable: false,
+                    localCommit: localCommit.substring(0, 7), remoteCommit: remoteCommit.substring(0, 7),
+                    commitMessage: 'Already on the latest version.'
+                };
+            } else {
+                 const commitMessage = await gitExec('log origin/main -1 --pretty="format:%s (%cr)"');
+                 updateInfo = {
+                    statusText: 'An update is available.', isUpdateAvailable: true,
+                    localCommit: localCommit.substring(0, 7), remoteCommit: remoteCommit.substring(0, 7),
+                    commitMessage: commitMessage,
+                };
+            }
+        }
+
+        const backup = getLatestBackup();
+        const backupInfo = backup ? {
+            backupFile: backup.file,
+            backupDate: new Date(backup.time).toISOString(),
+        } : {};
+        
+        res.json({ ...updateInfo, ...backupInfo });
 
     } catch (error) {
         res.status(500).json({ 
@@ -345,6 +375,87 @@ adminRouter.post('/updater/update', adminAuth, (req, res) => {
             console.error('[Updater] UPDATE FAILED:', error.message);
         }
     })();
+});
+
+adminRouter.post('/updater/backup', adminAuth, async (req, res) => {
+    const now = new Date();
+    const dateString = now.toISOString().replace(/[:.]/g, '-');
+    const backupFileName = `sulit-wifi-backup-${dateString}.tar.gz`;
+    const backupFilePath = path.join(BACKUP_DIR, backupFileName);
+    const projectDir = __dirname;
+    const projectParentDir = path.dirname(projectDir);
+    const projectDirName = path.basename(projectDir);
+    
+    console.log('[Backup] Starting backup process...');
+
+    try {
+        // First, remove any old backups to keep only the latest one.
+        const existingBackup = getLatestBackup();
+        if (existingBackup) {
+            console.log(`[Backup] Removing old backup: ${existingBackup.file}`);
+            fs.unlinkSync(path.join(BACKUP_DIR, existingBackup.file));
+        }
+
+        // Create the new backup
+        const command = `tar -czf "${backupFilePath}" -C "${projectParentDir}" "${projectDirName}"`;
+        console.log(`[Backup] Executing: ${command}`);
+        await promiseExec(command);
+        
+        console.log(`[Backup] Successfully created backup: ${backupFileName}`);
+        res.status(201).json({ message: `Backup created successfully: ${backupFileName}` });
+    } catch (error) {
+        console.error('[Backup] Backup failed:', error.stderr || error.message);
+        res.status(500).json({ message: 'Failed to create backup. Check server logs.' });
+    }
+});
+
+adminRouter.post('/updater/restore', adminAuth, (req, res) => {
+    const backup = getLatestBackup();
+    if (!backup) {
+        return res.status(404).json({ message: 'No backup file found to restore.' });
+    }
+    
+    console.log(`[Restore] Starting restore from: ${backup.file}`);
+    res.status(202).json({ message: `Restore process started from ${backup.file}. The server will restart shortly.` });
+
+    (async () => {
+        const backupFilePath = path.join(BACKUP_DIR, backup.file);
+        const projectDir = __dirname;
+
+        try {
+            console.log(`[Restore] Extracting archive to ${projectDir}...`);
+            // The tarball contains the parent directory, so we extract into its parent
+            const restoreCommand = `tar -xzf "${backupFilePath}" -C "${path.dirname(projectDir)}"`;
+            await promiseExec(restoreCommand);
+            
+            console.log('[Restore] Installing dependencies from restored files...');
+            await promiseExec(`cd "${projectDir}" && npm install`);
+
+            console.log('[Restore] Restarting server via PM2...');
+            await promiseExec('pm2 restart sulit-wifi');
+            
+            console.log('[Restore] Restore process completed.');
+        } catch (error) {
+            console.error('[Restore] RESTORE FAILED:', error.stderr || error.message);
+        }
+    })();
+});
+
+adminRouter.delete('/updater/backup', adminAuth, (req, res) => {
+    const backup = getLatestBackup();
+    if (!backup) {
+        return res.status(404).json({ message: 'No backup file found to delete.' });
+    }
+    
+    try {
+        const backupFilePath = path.join(BACKUP_DIR, backup.file);
+        fs.unlinkSync(backupFilePath);
+        console.log(`[Backup] Deleted backup file: ${backup.file}`);
+        res.json({ message: `Successfully deleted backup: ${backup.file}` });
+    } catch (error) {
+        console.error('[Backup] Failed to delete backup:', error);
+        res.status(500).json({ message: 'Failed to delete backup file.' });
+    }
 });
 
 
