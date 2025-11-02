@@ -284,8 +284,10 @@ adminRouter.put('/network-config', adminAuth, (req, res) => {
     if (!wanInterface || !hotspotInterface || !hotspotIpAddress) {
         return res.status(400).json({ message: 'WAN, Hotspot interface, and IP address are required.' });
     }
+    // FIX: Added strict validation to prevent setting WAN and Hotspot to the same interface.
+    // This is the primary safeguard against locking the user out of their device.
     if (wanInterface === hotspotInterface) {
-        return res.status(400).json({ message: 'WAN and Hotspot interfaces cannot be the same.' });
+        return res.status(400).json({ message: 'CRITICAL ERROR: WAN and Hotspot interfaces cannot be the same. Configuration rejected.' });
     }
     const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
     if (!ipRegex.test(hotspotIpAddress)) {

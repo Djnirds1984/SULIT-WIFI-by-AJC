@@ -42,7 +42,17 @@ const Network: React.FC = () => {
                 getNetworkConfiguration()
             ]);
             setInterfaces(interfacesData);
+
+            // FIX: Add logic to auto-correct an invalid configuration on load.
+            // If the saved hotspot interface is the same as the WAN, it picks the first available *different* interface.
+            if (configData.wanInterface === configData.hotspotInterface) {
+                const fallbackHotspot = interfacesData.find(i => i.name !== configData.wanInterface);
+                if (fallbackHotspot) {
+                    configData.hotspotInterface = fallbackHotspot.name;
+                }
+            }
             setConfig(configData);
+
         } catch (err) {
             setError('Failed to load network configuration. Please check the connection and try again.');
         } finally {
@@ -58,6 +68,7 @@ const Network: React.FC = () => {
         e.preventDefault();
         if (!config) return;
         
+        // This check is now redundant because of the UI change, but kept as a safeguard.
         if (config.wanInterface === config.hotspotInterface) {
             setError("WAN and Hotspot interfaces cannot be the same device.");
             return;
@@ -78,11 +89,28 @@ const Network: React.FC = () => {
     };
     
     const handleConfigChange = (role: keyof NetworkConfiguration, value: string) => {
-        setConfig(prev => prev ? { ...prev, [role]: value } : null);
+        setConfig(prev => {
+            if (!prev) return null;
+            const newConfig = { ...prev, [role]: value };
+
+            // FIX: If the WAN interface is changed, check if the hotspot interface is now invalid.
+            // If it is, auto-select the first valid alternative to prevent an error state.
+            if (role === 'wanInterface' && newConfig.wanInterface === newConfig.hotspotInterface) {
+                const fallbackHotspot = interfaces.find(i => i.name !== newConfig.wanInterface);
+                if (fallbackHotspot) {
+                    newConfig.hotspotInterface = fallbackHotspot.name;
+                }
+            }
+            return newConfig;
+        });
     };
 
     if (isLoading) return <LoadingPlaceholder />;
     if (error && !interfaces.length) return <ErrorPlaceholder message={error} onRetry={fetchData} />;
+
+    // FIX: Create a filtered list of interfaces available for the hotspot role.
+    // This list dynamically excludes the currently selected WAN interface.
+    const availableHotspotInterfaces = interfaces.filter(iface => iface.name !== config?.wanInterface);
 
     return (
         <div className="space-y-6 animate-fade-in-slow">
@@ -118,7 +146,8 @@ const Network: React.FC = () => {
                         <h4 className="font-semibold text-slate-300 mb-2">Hotspot Interface</h4>
                         <p className="text-xs text-slate-500 mb-3">The interface broadcasting the Wi-Fi for users.</p>
                          <div className="space-y-2">
-                            {interfaces.map(iface => (
+                            {/* FIX: Map over the filtered list to prevent showing the WAN interface as an option. */}
+                            {availableHotspotInterfaces.map(iface => (
                                 <label key={`hotspot-${iface.name}`} className="flex items-center gap-3 p-2 rounded-md bg-slate-900/50 has-[:checked]:bg-purple-900/50 has-[:checked]:ring-2 ring-purple-500 transition-all cursor-pointer">
                                     <input
                                         type="radio"
@@ -131,6 +160,11 @@ const Network: React.FC = () => {
                                      <span className="text-sm font-medium text-white">{iface.name}</span>
                                 </label>
                             ))}
+                             {availableHotspotInterfaces.length === 0 && (
+                                <div className="text-center text-xs text-amber-400 p-2 bg-amber-900/30 rounded-md">
+                                    Only one network interface was detected. Cannot assign a different one to the hotspot.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -153,7 +187,7 @@ const Network: React.FC = () => {
                 {error && <p className="text-sm text-center text-red-400 p-2 bg-red-900/30 rounded-md">{error}</p>}
                 {success && <p className="text-sm text-center text-green-400 p-2 bg-green-900/30 rounded-md">{success}</p>}
 
-                <button type="submit" disabled={isSaving || !config} className="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-wait">
+                <button type="submit" disabled={isSaving || !config || availableHotspotInterfaces.length === 0} className="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-not-allowed disabled:text-slate-400">
                     {isSaving ? 'Applying Settings...' : 'Save & Apply Changes'}
                 </button>
             </form>
