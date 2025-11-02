@@ -40,7 +40,7 @@ const db = {
   },
   networkConfiguration: {
     wanInterface: 'eth0',
-    hotspotInterface: 'wlan0',
+    hotspotInterface: '', // No default hotspot; forces user to choose a valid one.
     hotspotIpAddress: '192.168.200.13',
     hotspotDhcpServer: {
       enabled: true,

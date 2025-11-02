@@ -68,6 +68,11 @@ const NetworkConfigurator: React.FC = () => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!config) return;
+
+        if (!config.hotspotInterface) {
+            setError("Please select a Hotspot Interface.");
+            return;
+        }
         
         if (config.wanInterface === config.hotspotInterface) {
             setError("WAN and Hotspot interfaces cannot be the same device.");
