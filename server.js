@@ -65,15 +65,6 @@ try {
     coinSlotPin = null;
 }
 
-// --- Common Middleware ---
-const commonMiddleware = [
-    cors(),
-    bodyParser.json(),
-    express.static(path.join(__dirname)), // Serve index.html, etc from root
-    express.static(path.join(__dirname, 'dist')), // Serve the bundled JS
-];
-portalApp.use(commonMiddleware);
-adminApp.use(commonMiddleware);
 
 // --- Helper Functions ---
 const generateVoucherCode = () => `SULIT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -98,93 +89,6 @@ const deauthenticateClient = (macAddress) => {
         else console.log(`[Portal] Client ${macAddress} deauthenticated.`);
     });
 };
-
-// ===============================================
-// --- PORTAL SERVER API (Port 3001) ---
-// ===============================================
-
-// --- Public Routes (for user portal) ---
-
-// Public endpoint for the portal to get the network name
-portalApp.get('/api/public/settings', (req, res) => {
-    res.json(db.settings);
-});
-
-// --- User Session Management ---
-
-portalApp.post('/api/sessions/voucher', (req, res) => {
-  const { code } = req.body;
-  const clientMac = req.query.mac;
-  if (!code) return res.status(400).json({ message: 'Voucher code is required.' });
-
-  const voucher = db.vouchers.get(code.toUpperCase());
-  if (!voucher) return res.status(404).json({ message: 'Invalid voucher code.' });
-  if (voucher.used) return res.status(403).json({ message: 'Voucher has already been used.' });
-
-  voucher.used = true;
-  const session = {
-    voucherCode: code, startTime: Date.now(), duration: voucher.duration, remainingTime: voucher.duration,
-  };
-  db.sessions.set(clientMac, session);
-  authenticateClient(clientMac, session.duration);
-  console.log(`[Portal] Voucher activated for MAC ${clientMac}: ${code}`);
-  res.status(201).json(session);
-});
-
-portalApp.post('/api/sessions/coin', (req, res) => {
-    const clientMac = req.query.mac;
-    console.log(`[Portal] Coin session request for MAC: ${clientMac}. Waiting for coin...`);
-    if (!coinSlotPin) return res.status(503).json({ message: 'Coin slot hardware is not available.' });
-
-    const handleCoinDrop = (err) => {
-        if (err) { console.error('[Portal] GPIO error:', err); return; }
-        console.log(`[Portal] Coin detected for MAC: ${clientMac}!`);
-        const duration = 900; // 15 minutes
-        const session = { voucherCode: `COIN-${Date.now()}`, startTime: Date.now(), duration, remainingTime: duration };
-        db.sessions.set(clientMac, session);
-        authenticateClient(clientMac, duration);
-        if (!res.headersSent) res.status(201).json(session);
-        cleanup();
-    };
-
-    const timeout = setTimeout(() => {
-        if (!res.headersSent) res.status(408).json({ message: 'Request timed out. No coin inserted.' });
-        cleanup();
-    }, 30000);
-
-    const cleanup = () => { clearTimeout(timeout); coinSlotPin.unwatch(handleCoinDrop); };
-    coinSlotPin.watch(handleCoinDrop);
-});
-
-portalApp.get('/api/sessions/current', (req, res) => {
-    const clientMac = req.query.mac;
-    const session = db.sessions.get(clientMac);
-    if (!session) return res.status(404).json({ message: 'No active session found.' });
-
-    const elapsedTime = (Date.now() - session.startTime) / 1000;
-    const remainingTime = Math.max(0, session.duration - elapsedTime);
-    if (remainingTime <= 0) {
-        db.sessions.delete(clientMac);
-        return res.status(404).json({ message: 'Session has expired.' });
-    }
-    res.json({ ...session, remainingTime: Math.round(remainingTime) });
-});
-
-portalApp.delete('/api/sessions/current', (req, res) => {
-    const clientMac = req.query.mac;
-    if (db.sessions.has(clientMac)) {
-        db.sessions.delete(clientMac);
-        deauthenticateClient(clientMac);
-        console.log(`[Portal] Session ended for MAC: ${clientMac}`);
-    }
-    res.status(204).send();
-});
-
-// Catch-all for Portal Frontend Routing
-portalApp.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
 
 // ===============================================
 // --- ADMIN SERVER API (Port 3002) ---
@@ -363,17 +267,121 @@ adminRouter.put('/settings', adminAuth, (req, res) => {
     res.status(204).send();
 });
 
-// Mount the admin router on BOTH apps.
-// This makes the admin API available on the admin server (for WAN access)
-// and on the portal server (as a fallback for LAN/misconfigured access),
-// fixing the 404 error when accessing the admin panel from the LAN.
-portalApp.use('/api/admin', adminRouter);
+
+// --- Configure Admin App Middleware (Order is important!) ---
+adminApp.use(cors());
+adminApp.use(bodyParser.json());
+
+// 1. API routes are highest priority.
 adminApp.use('/api/admin', adminRouter);
 
-// Catch-all for Admin Frontend Routing
+// 2. Then, serve static assets for the frontend.
+adminApp.use(express.static(path.join(__dirname)));
+adminApp.use(express.static(path.join(__dirname, 'dist')));
+
+// 3. Finally, the catch-all for the React app's client-side routing.
 adminApp.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
+
+
+// ===============================================
+// --- PORTAL SERVER API (Port 3001) ---
+// ===============================================
+
+// --- Configure Portal App Middleware (Order is important!) ---
+portalApp.use(cors());
+portalApp.use(bodyParser.json());
+
+// 1. API Routes
+// Public endpoint for the portal to get the network name
+portalApp.get('/api/public/settings', (req, res) => {
+    res.json(db.settings);
+});
+
+// User Session Management
+portalApp.post('/api/sessions/voucher', (req, res) => {
+  const { code } = req.body;
+  const clientMac = req.query.mac;
+  if (!code) return res.status(400).json({ message: 'Voucher code is required.' });
+
+  const voucher = db.vouchers.get(code.toUpperCase());
+  if (!voucher) return res.status(404).json({ message: 'Invalid voucher code.' });
+  if (voucher.used) return res.status(403).json({ message: 'Voucher has already been used.' });
+
+  voucher.used = true;
+  const session = {
+    voucherCode: code, startTime: Date.now(), duration: voucher.duration, remainingTime: voucher.duration,
+  };
+  db.sessions.set(clientMac, session);
+  authenticateClient(clientMac, session.duration);
+  console.log(`[Portal] Voucher activated for MAC ${clientMac}: ${code}`);
+  res.status(201).json(session);
+});
+
+portalApp.post('/api/sessions/coin', (req, res) => {
+    const clientMac = req.query.mac;
+    console.log(`[Portal] Coin session request for MAC: ${clientMac}. Waiting for coin...`);
+    if (!coinSlotPin) return res.status(503).json({ message: 'Coin slot hardware is not available.' });
+
+    const handleCoinDrop = (err) => {
+        if (err) { console.error('[Portal] GPIO error:', err); return; }
+        console.log(`[Portal] Coin detected for MAC: ${clientMac}!`);
+        const duration = 900; // 15 minutes
+        const session = { voucherCode: `COIN-${Date.now()}`, startTime: Date.now(), duration, remainingTime: duration };
+        db.sessions.set(clientMac, session);
+        authenticateClient(clientMac, duration);
+        if (!res.headersSent) res.status(201).json(session);
+        cleanup();
+    };
+
+    const timeout = setTimeout(() => {
+        if (!res.headersSent) res.status(408).json({ message: 'Request timed out. No coin inserted.' });
+        cleanup();
+    }, 30000);
+
+    const cleanup = () => { clearTimeout(timeout); coinSlotPin.unwatch(handleCoinDrop); };
+    coinSlotPin.watch(handleCoinDrop);
+});
+
+portalApp.get('/api/sessions/current', (req, res) => {
+    const clientMac = req.query.mac;
+    const session = db.sessions.get(clientMac);
+    if (!session) return res.status(404).json({ message: 'No active session found.' });
+
+    const elapsedTime = (Date.now() - session.startTime) / 1000;
+    const remainingTime = Math.max(0, session.duration - elapsedTime);
+    if (remainingTime <= 0) {
+        db.sessions.delete(clientMac);
+        return res.status(404).json({ message: 'Session has expired.' });
+    }
+    res.json({ ...session, remainingTime: Math.round(remainingTime) });
+});
+
+portalApp.delete('/api/sessions/current', (req, res) => {
+    const clientMac = req.query.mac;
+    if (db.sessions.has(clientMac)) {
+        db.sessions.delete(clientMac);
+        deauthenticateClient(clientMac);
+        console.log(`[Portal] Session ended for MAC: ${clientMac}`);
+    }
+    res.status(204).send();
+});
+
+// Mount the admin router on the portal app as well.
+// This allows the admin panel to be accessed from the LAN, where clients
+// are pointed to the portal server.
+portalApp.use('/api/admin', adminRouter);
+
+// 2. Then, serve static assets for the frontend.
+portalApp.use(express.static(path.join(__dirname)));
+portalApp.use(express.static(path.join(__dirname, 'dist')));
+
+// 3. Finally, the catch-all for the React app's client-side routing.
+portalApp.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 
 // --- Start Both Servers ---
 portalApp.listen(PORTAL_PORT, () => {

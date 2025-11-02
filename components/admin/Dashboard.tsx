@@ -23,7 +23,13 @@ const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>
     </div>
 );
 
-const SpecCard = ({ icon, label, children }: { icon: React.ReactElement<any>, label: string | React.ReactNode, children: React.ReactNode }) => (
+// FIX: Typed SpecCard as a React.FC to correctly handle `children` and `key` props.
+interface SpecCardProps {
+    icon: React.ReactElement<any>;
+    label: string | React.ReactNode;
+}
+
+const SpecCard: React.FC<SpecCardProps> = ({ icon, label, children }) => (
     <div className="bg-slate-900/50 p-4 rounded-lg flex gap-4">
          <div className="p-2 rounded-full bg-slate-800/50 h-fit">
             {React.cloneElement(icon, { className: 'w-6 h-6 text-indigo-400' })}
