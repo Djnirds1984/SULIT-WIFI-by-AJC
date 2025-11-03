@@ -5,6 +5,14 @@ import ServerStackIcon from '../icons/ServerStackIcon';
 
 const isValidIp = (ip: string) => /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip);
 
+// Helper to get the /24 network prefix (e.g., "192.168.1.10" -> "192.168.1")
+const getNetworkPrefix = (ip: string): string | null => {
+    if (!isValidIp(ip)) return null;
+    const parts = ip.split('.');
+    if (parts.length !== 4) return null;
+    return `${parts[0]}.${parts[1]}.${parts[2]}`;
+};
+
 const Network: React.FC = () => {
     const [config, setConfig] = useState<NetworkConfig | null>(null);
     const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
@@ -36,19 +44,28 @@ const Network: React.FC = () => {
         fetchData();
     }, []);
 
-    // Memoized validation logic without side effects
+    // Memoized validation logic with subnet checks
     const formErrors = useMemo(() => {
         if (!config) return {};
         const errors: Record<string, string> = {};
+
         if (!isValidIp(config.hotspotIpAddress)) {
             errors.hotspotIpAddress = 'Invalid IP format.';
         }
+
+        const hotspotIpPrefix = getNetworkPrefix(config.hotspotIpAddress);
+
         if (config.hotspotDhcpServer.enabled) {
             if (!isValidIp(config.hotspotDhcpServer.start)) {
                 errors.dhcpStart = 'Invalid IP format.';
+            } else if (hotspotIpPrefix && getNetworkPrefix(config.hotspotDhcpServer.start) !== hotspotIpPrefix) {
+                errors.dhcpStart = 'Must be on the same subnet as the Hotspot IP.';
             }
+
             if (!isValidIp(config.hotspotDhcpServer.end)) {
                 errors.dhcpEnd = 'Invalid IP format.';
+            } else if (hotspotIpPrefix && getNetworkPrefix(config.hotspotDhcpServer.end) !== hotspotIpPrefix) {
+                errors.dhcpEnd = 'Must be on the same subnet as the Hotspot IP.';
             }
         }
         return errors;
