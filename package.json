@@ -6,7 +6,7 @@
   "scripts": {
     "start": "npm run build && node server.js",
     "build": "npm run clean && npm run build:css && npm run build:js",
-    "build:js": "esbuild src/index.tsx --bundle --outfile=public/dist/bundle.js --minify --external:react --external:react-dom/client --external:@google/genai",
+    "build:js": "esbuild src/index.tsx --bundle --outfile=public/dist/bundle.js --minify --format=esm --external:react --external:react-dom/client --external:@google/genai",
     "build:css": "tailwindcss -i src/styles.css -o public/dist/styles.css --minify",
     "clean": "rimraf ./public/dist"
   },
