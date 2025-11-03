@@ -22,8 +22,9 @@ const adminApp = express();
 
 // --- Middleware ---
 portalApp.use(cors());
-portalApp.use(express.json());
 adminApp.use(cors());
+// IMPORTANT: The body parser is now applied to specific routes on the portal server, not globally.
+// The admin server still needs a global body parser for all its routes.
 adminApp.use(express.json());
 
 
@@ -44,7 +45,7 @@ const ndsctl = async (subcommand, mac) => {
     try {
         await executeCommand(`sudo /usr/bin/ndsctl ${subcommand} ${mac}`);
         console.log(`[NDSCTL] Executed: ${subcommand} for MAC ${mac}`);
-    } catch (error) {
+    } catch (error) => {
         console.error(`[NDSCTL] Failed to execute ${subcommand} for MAC ${mac}:`, error);
         // Don't throw, as some commands might fail if user is already gone
     }
@@ -101,25 +102,16 @@ try {
 // --- PORTAL SERVER (Port 3001) - For local hotspot users       ---
 // =================================================================
 
-// Proxy admin API calls to the admin server.
-// This MUST be defined *before* the body parser for proxied routes.
+// Proxy admin API calls to the admin server. This MUST be defined before other routes.
+// By NOT using a global body-parser on the portalApp, the raw request stream
+// is correctly forwarded to the adminApp, which then parses it.
 portalApp.use('/api/admin', createProxyMiddleware({
     target: `http://localhost:${ADMIN_PORT}`,
     changeOrigin: true,
-    onProxyReq: (proxyReq, req, res) => {
-        // The portalApp's express.json() middleware consumes the body stream.
-        // We need to re-stream it here for the adminApp to receive it.
-        if (req.body) {
-            const bodyData = JSON.stringify(req.body);
-            // In case the body parser is not configured on the target, we add the headers here
-            proxyReq.setHeader('Content-Type', 'application/json');
-            proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
-            // Stream the body
-            proxyReq.write(bodyData);
-        }
-    },
 }));
 
+// Define a body parser instance to be used ONLY on the routes that need it.
+const portalBodyParser = express.json();
 
 // --- Public API (No Auth) ---
 portalApp.get('/api/public/settings', async (req, res) => {
@@ -132,7 +124,8 @@ portalApp.get('/api/public/settings', async (req, res) => {
 });
 
 // --- Session Management ---
-portalApp.post('/api/sessions/voucher', async (req, res) => {
+// Apply the body parser middleware only to these POST routes.
+portalApp.post('/api/sessions/voucher', portalBodyParser, async (req, res) => {
     const { code } = req.body;
     const { mac } = req.query;
     if (!mac || !code) return res.status(400).json({ message: 'MAC address and voucher code are required.' });
@@ -152,7 +145,7 @@ portalApp.post('/api/sessions/voucher', async (req, res) => {
     }
 });
 
-portalApp.post('/api/sessions/coin', async (req, res) => {
+portalApp.post('/api/sessions/coin', portalBodyParser, async (req, res) => {
     const { mac } = req.query;
     if (!mac) return res.status(400).json({ message: 'MAC address is required.' });
     try {
