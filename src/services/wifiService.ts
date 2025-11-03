@@ -145,6 +145,14 @@ export const getUpdaterStatus = async (): Promise<UpdaterStatus> => {
     return handleResponse(response);
 };
 
+export const startUpdate = async (): Promise<{ message: string }> => {
+    const response = await fetch('/api/admin/updater/update', {
+        method: 'POST',
+        headers: getAuthHeaders()
+    });
+    return handleResponse(response);
+};
+
 export const getPortalHtml = async (): Promise<{ html: string }> => {
     const response = await fetch('/api/admin/portal-html', { headers: getAuthHeaders() });
     return handleResponse(response);

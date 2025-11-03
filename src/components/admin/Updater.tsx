@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getUpdaterStatus, listBackups, createBackup, restoreBackup, deleteBackup } from '../../services/wifiService';
+import { getUpdaterStatus, startUpdate, listBackups, createBackup, restoreBackup, deleteBackup } from '../../services/wifiService';
 import { UpdaterStatus } from '../../types';
 import CloudArrowDownIcon from '../icons/CloudArrowDownIcon';
 import ArchiveBoxIcon from '../icons/ArchiveBoxIcon';
@@ -20,7 +20,8 @@ const Updater: React.FC = () => {
         try {
             const statusData = await getUpdaterStatus();
             setStatus(statusData);
-        } catch (err) {
+        } catch (err: any) {
+            setError(err.message || "Could not fetch update status.");
             console.error(err);
         } finally {
             setIsLoadingStatus(false);
@@ -47,6 +48,20 @@ const Updater: React.FC = () => {
     const clearMessages = () => {
         setMessage('');
         setError('');
+    };
+    
+    const handleUpdate = async () => {
+        if (window.confirm("This will update the application from the main GitHub repository. The server will restart. Are you sure you want to proceed?")) {
+            clearMessages();
+            setIsProcessing(true);
+            try {
+                const res = await startUpdate();
+                setMessage(res.message);
+            } catch (err: any) {
+                setError(err.message);
+                setIsProcessing(false); // Only set to false on error
+            }
+        }
     };
 
     const handleCreateBackup = async () => {
@@ -98,7 +113,15 @@ const Updater: React.FC = () => {
         <div className="animate-fade-in space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">Updater & Backup</h1>
 
-            {message && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">{message}</div>}
+            {message && (
+                <div className={`px-4 py-3 rounded relative ${
+                    isProcessing && message.includes('Update process started') 
+                    ? 'bg-blue-100 border border-blue-400 text-blue-700' 
+                    : 'bg-green-100 border border-green-400 text-green-700'
+                }`}>
+                    {message}
+                </div>
+            )}
             {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">{error}</div>}
 
             <div className="bg-white p-6 rounded-lg shadow-md">
@@ -107,17 +130,21 @@ const Updater: React.FC = () => {
                     status && (
                         <div className="space-y-4">
                             <p><strong>Status:</strong> {status.statusText}</p>
-                            <p><strong>Current Version:</strong> <span className="font-mono text-sm">{status.localCommit}</span></p>
+                            <div className="flex flex-col sm:flex-row sm:space-x-8 space-y-2 sm:space-y-0">
+                                <p><strong>Current Version:</strong> <span className="font-mono text-sm bg-gray-100 p-1 rounded">{status.localCommit}</span></p>
+                                {status.remoteCommit && <p><strong>Latest Version:</strong> <span className="font-mono text-sm bg-gray-100 p-1 rounded">{status.remoteCommit}</span></p>}
+                            </div>
                             {status.isUpdateAvailable ? (
                                 <button
-                                    disabled={true}
-                                    className="flex items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                                    onClick={handleUpdate}
+                                    disabled={isProcessing}
+                                    className="flex items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed"
                                 >
                                     <CloudArrowDownIcon className="h-5 w-5 mr-2" />
-                                    Update Now
+                                    {isProcessing ? 'Updating...' : 'Update Now'}
                                 </button>
                             ) : (
-                                <p className="text-green-600 font-semibold">You are on the latest version.</p>
+                                !status.statusText.startsWith('Error') && <p className="text-green-600 font-semibold">You are on the latest version.</p>
                             )}
                         </div>
                     )

@@ -498,12 +498,56 @@ app.delete('/api/admin/backups/delete', authMiddleware, async (req, res) => {
     }
 });
 
+// --- Updater API ---
+app.get('/api/admin/updater/status', authMiddleware, async (req, res) => {
+    try {
+        await executeSystemCommand('git fetch origin');
+        const localCommit = await executeSystemCommand('git rev-parse HEAD');
+        const remoteCommit = await executeSystemCommand('git rev-parse origin/master');
+        const isUpdateAvailable = localCommit !== remoteCommit;
+        const statusText = isUpdateAvailable ? 'A new version is available.' : 'You are on the latest version.';
+        
+        res.json({ 
+            isUpdateAvailable, 
+            statusText, 
+            localCommit: localCommit.slice(0, 7),
+            remoteCommit: remoteCommit.slice(0, 7)
+        });
+    } catch (error) {
+        console.error("Failed to check for updates:", error);
+        res.status(500).json({ 
+            isUpdateAvailable: false,
+            statusText: `Error checking for updates: ${error.message}`,
+            localCommit: 'N/A'
+        });
+    }
+});
+
+app.post('/api/admin/updater/update', authMiddleware, (req, res) => {
+    console.log('[Updater] Received request to update application.');
+    res.json({ message: 'Update process started. The server will restart shortly if successful.' });
+
+    // Perform update in the background to avoid a hanging request
+    setTimeout(async () => {
+        try {
+            console.log('[Updater] 1/4: Pulling latest code from origin/master...');
+            await executeSystemCommand('git pull origin master');
+            console.log('[Updater] 2/4: Installing/updating dependencies...');
+            await executeSystemCommand('npm install');
+            console.log('[Updater] 3/4: Building frontend assets...');
+            await executeSystemCommand('npm run build');
+            console.log('[Updater] 4/4: Restarting application with PM2...');
+            await executeSystemCommand('pm2 restart sulit-wifi');
+        } catch (error) {
+            console.error('[Updater] FATAL: Update process failed. Please check logs and resolve manually.', error);
+        }
+    }, 500);
+});
+
 // Placeholder routes for features not yet implemented on backend
 app.get('/api/admin/portal-html', authMiddleware, (req, res) => res.json({ html: `<h1>SULIT WIFI Portal</h1><p>Placeholder</p>` }));
 app.put('/api/admin/portal-html', authMiddleware, (req, res) => res.json({ message: 'Saved successfully.' }));
 app.post('/api/admin/portal-html/reset', authMiddleware, (req, res) => res.json({ html: `<h1>SULIT WIFI Portal</h1><p>Placeholder</p>` }));
-app.get('/api/admin/updater/status', authMiddleware, (req, res) => res.json({ isUpdateAvailable: false, statusText: 'Updater not implemented.', localCommit: 'N/A' }));
-app.post('/api/admin/updater/update', authMiddleware, (req, res) => res.status(501).json({ message: 'Not Implemented' }));
 
 
 // --- Static File Serving & SPA Fallback ---

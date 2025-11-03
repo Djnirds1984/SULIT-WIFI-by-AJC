@@ -58,4 +58,5 @@ export interface UpdaterStatus {
     isUpdateAvailable: boolean;
     statusText: string;
     localCommit: string;
+    remoteCommit?: string;
 }
