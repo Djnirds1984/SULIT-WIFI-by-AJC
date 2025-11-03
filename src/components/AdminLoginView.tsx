@@ -1,4 +1,3 @@
-// FIX: Implemented the AdminLoginView component.
 import React, { useState } from 'react';
 import { adminLogin } from '../services/wifiService';
 import { UserIcon } from './icons/UserIcon';

@@ -9,8 +9,6 @@ import { SdCardIcon } from '../icons/SdCardIcon';
 import { ServerStackIcon } from '../icons/ServerStackIcon';
 import { AdminDashboardStats, SystemInfo, NetworkInfo } from '../../types';
 
-// FIX: Moved helper components outside the Dashboard component to prevent re-creation on each render.
-// This stabilizes the component definitions and resolves the intermittent TypeScript errors regarding props.
 const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>, label: string, value: string | number, color: string }) => (
     <div className="bg-slate-900/50 p-4 rounded-lg flex items-center gap-4 border-l-4" style={{ borderColor: color }}>
         <div className={`p-2 rounded-full`} style={{ backgroundColor: `${color}20` }}>
@@ -23,11 +21,9 @@ const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>
     </div>
 );
 
-// FIX: Typed SpecCard as a React.FC to correctly handle `children` and `key` props.
 interface SpecCardProps {
     icon: React.ReactElement<any>;
     label: string | React.ReactNode;
-    // FIX: Added children property to fix type errors where the component was used with child elements.
     children: React.ReactNode;
 }
 

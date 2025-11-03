@@ -105,10 +105,8 @@ const NetworkConfigurator: React.FC = () => {
                 }
             }
             
-            // If the hotspot IP changes, intelligently update the DHCP range to match the new subnet.
             if (field === 'hotspotIpAddress') {
                 const ipParts = value.split('.');
-                // A simple regex to check for a valid-looking IP before changing dependent fields
                 if (ipParts.length === 4 && ipParts.every(p => !isNaN(parseInt(p, 10)) && parseInt(p, 10) >= 0 && parseInt(p, 10) <= 255)) {
                     const subnet = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
                     newConfig.hotspotDhcpServer.start = `${subnet}.100`;

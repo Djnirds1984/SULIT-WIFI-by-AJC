@@ -1,4 +1,3 @@
-// FIX: Implemented the UserIcon component.
 import React from 'react';
 
 export const UserIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (

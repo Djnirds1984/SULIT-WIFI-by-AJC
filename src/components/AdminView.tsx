@@ -1,4 +1,3 @@
-// FIX: Implemented the AdminView component with tabbed navigation.
 import React, { useState } from 'react';
 import Dashboard from './admin/Dashboard';
 import VoucherManager from './admin/VoucherManager';
@@ -52,7 +51,7 @@ const AdminView: React.FC = () => {
         <div className="animate-fade-in">
              <h2 className="text-2xl font-bold text-center text-indigo-400 mb-6">Admin Panel</h2>
             <div className="flex flex-col md:flex-row gap-6 md:gap-8">
-                <nav className="md:w-1/4 flex flex-row md:flex-col gap-2 p-2 bg-slate-900/50 rounded-lg border border-slate-700">
+                <nav className="md:w-1/4 flex flex-row overflow-x-auto md:flex-col gap-2 p-2 bg-slate-900/50 rounded-lg border border-slate-700">
                     <SidebarLink tab="DASHBOARD" label="Dashboard" icon={<ChartBarIcon className="w-5 h-5" />} />
                     <SidebarLink tab="VOUCHERS" label="Vouchers" icon={<TicketIcon className="w-5 h-5" />} />
                     <SidebarLink tab="SETTINGS" label="Settings" icon={<CogIcon className="w-5 h-5" />} />

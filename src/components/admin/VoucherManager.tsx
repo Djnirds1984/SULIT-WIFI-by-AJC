@@ -26,7 +26,7 @@ const VoucherManager: React.FC = () => {
         setIsLoading(true);
         try {
             const data = await getVouchers();
-            setVouchers(data.reverse()); // Show newest first
+            setVouchers(data.reverse());
         } catch (error) {
             console.error("Failed to fetch vouchers", error);
         } finally {
@@ -44,7 +44,7 @@ const VoucherManager: React.FC = () => {
         try {
             const newCode = await generateNewVoucher(selectedDuration);
             setGeneratedCode(newCode);
-            await fetchVouchers(); // Refresh list
+            await fetchVouchers();
         } catch (error) {
             console.error("Failed to generate voucher", error);
         } finally {
@@ -105,6 +105,7 @@ const VoucherManager: React.FC = () => {
                             </div>
                         ))}
                          {copiedCode && <p className="text-xs text-green-400 text-center sticky bottom-0 bg-slate-900/80 backdrop-blur-sm py-1 animate-fade-in">Copied to clipboard!</p>}
+                         {vouchers.length === 0 && <p className="text-center text-sm text-slate-500 py-4">No available vouchers found. Generate one above!</p>}
                     </div>
                 )}
             </div>

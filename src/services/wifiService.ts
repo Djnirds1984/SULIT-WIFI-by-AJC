@@ -1,7 +1,5 @@
-// FIX: Implemented the wifiService to handle API interactions.
 import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher, SystemInfo, NetworkInfo, UpdaterStatus, NetworkConfiguration } from '../types';
 
-// A helper for making API calls and handling standard responses
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -12,12 +10,10 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
   const response = await fetch(url, { ...options, headers });
 
   if (!response.ok) {
-    // Try to parse a JSON error message from the backend
     const errorData = await response.json().catch(() => ({ message: 'An unexpected error occurred.' }));
     throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
   }
 
-  // For 204 No Content responses, return undefined as there's no body to parse
   if (response.status === 204) {
     return;
   }
@@ -25,12 +21,7 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
   return response.json();
 };
 
-
-// --- User Session Management (Portal Server on port 3001) ---
-
-// Helper to append MAC address for portal API calls
 const portalApiUrl = (path: string, mac: string): string => {
-  // The component should ensure mac is not null or empty.
   return `${path}?mac=${encodeURIComponent(mac)}`;
 };
 
@@ -49,11 +40,9 @@ export const activateCoinSession = async (mac: string): Promise<WifiSession> => 
 
 export const checkSession = async (mac: string): Promise<WifiSession | null> => {
   const url = portalApiUrl('/api/sessions/current', mac);
-  // Manually handle fetch to check for 404 status.
   const response = await fetch(url);
   if (response.ok) return response.json();
   if (response.status === 404) return null;
-
   const errorData = await response.json().catch(() => ({ message: 'Failed to check session.' }));
   throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
 };
@@ -62,22 +51,14 @@ export const logout = async (mac: string): Promise<void> => {
   await apiFetch(portalApiUrl('/api/sessions/current', mac), { method: 'DELETE' });
 };
 
-
-// --- Public APIs (Portal Server on port 3001) ---
-
-// Fetches network settings from the public endpoint for the portal page
 export const getPublicNetworkSettings = async (): Promise<NetworkSettings> => {
     return apiFetch('/api/public/settings');
 };
 
-
-// --- Admin Panel API Calls (proxied to Admin Server by Nginx) ---
-
-// Helper for authenticated admin calls that includes the auth token.
-// These now use relative paths, and Nginx is responsible for routing them to the Admin Server.
 const authenticatedAdminApiFetch = async (url: string, options: RequestInit = {}) => {
   const token = sessionStorage.getItem('adminToken');
   if (!token) {
+    window.location.href = '/admin'; // Redirect to login if token is missing
     throw new Error('Authentication token not found. Please log in again.');
   }
   
@@ -130,7 +111,6 @@ export const generateNewVoucher = async (duration: number): Promise<string> => {
 };
 
 export const getNetworkSettings = async (): Promise<NetworkSettings> => {
-    // This is the *authenticated* version for the admin settings page
     return authenticatedAdminApiFetch('/api/admin/settings');
 };
 

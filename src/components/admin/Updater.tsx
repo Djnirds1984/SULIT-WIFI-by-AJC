@@ -66,7 +66,6 @@ const Updater: React.FC = () => {
             setError(null);
             try {
                 await triggerUpdate();
-                // Server restarts, user must manually refresh.
             } catch (err) {
                  setError('The update command failed to start. Check server logs.');
                  setIsUpdating(false);
@@ -81,7 +80,7 @@ const Updater: React.FC = () => {
         try {
             const result = await createBackup();
             setBackupMessage(result.message);
-            await checkStatus(); // Refresh status to show new backup file
+            await checkStatus();
         } catch (err) {
             setError((err as Error).message);
         } finally {
@@ -99,7 +98,6 @@ const Updater: React.FC = () => {
             setBackupMessage(null);
             try {
                 await restoreFromBackup();
-                // Server restarts, user must manually refresh.
             } catch (err) {
                 setError((err as Error).message);
                 setIsRestoring(false);
@@ -118,7 +116,7 @@ const Updater: React.FC = () => {
             try {
                 const result = await deleteBackup();
                 setBackupMessage(result.message);
-                await checkStatus(); // Refresh status to remove backup file info
+                await checkStatus();
             } catch (err) {
                 setError((err as Error).message);
             } finally {
@@ -149,7 +147,6 @@ const Updater: React.FC = () => {
 
     return (
         <div className="space-y-8 animate-fade-in-slow">
-            {/* --- Application Updater --- */}
             <div className="space-y-4">
                 <div>
                     <h3 className="text-xl font-bold text-indigo-400">Application Updater</h3>
@@ -175,7 +172,6 @@ const Updater: React.FC = () => {
                 )}
             </div>
 
-            {/* --- Backup & Restore --- */}
              <div className="space-y-4 pt-6 border-t border-slate-700">
                 <div>
                     <h3 className="text-xl font-bold text-indigo-400">Backup & Restore</h3>

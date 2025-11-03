@@ -1,4 +1,3 @@
-// FIX: Implemented the main App component to manage application state and views.
 import React, { useState, useEffect, useCallback } from 'react';
 import { WifiSession } from './types';
 import * as wifiService from './services/wifiService';
@@ -8,7 +7,6 @@ import AdminLoginView from './components/AdminLoginView';
 import AdminView from './components/AdminView';
 import { WifiIcon } from './components/icons/WifiIcon';
 
-// Define a type for the possible views to improve type safety
 type AppView = 'PORTAL' | 'CONNECTED' | 'ADMIN_LOGIN' | 'ADMIN_DASHBOARD';
 
 function App() {
@@ -28,7 +26,6 @@ function App() {
         setView('CONNECTED');
       } else {
         setSession(null);
-        // stay on portal or login view
       }
       const settings = await wifiService.getPublicNetworkSettings();
       setNetworkSsid(settings.ssid);
@@ -45,7 +42,12 @@ function App() {
     setMacAddress(mac);
 
     if (window.location.pathname === '/admin') {
-      setView('ADMIN_LOGIN');
+      const token = sessionStorage.getItem('adminToken');
+      if (token) {
+        setView('ADMIN_DASHBOARD');
+      } else {
+        setView('ADMIN_LOGIN');
+      }
       setIsLoading(false);
     } else {
       if (mac) {
@@ -106,7 +108,7 @@ function App() {
   };
 
   const renderView = () => {
-    if (isLoading && view !== 'ADMIN_LOGIN') {
+    if (isLoading && view !== 'ADMIN_LOGIN' && view !== 'ADMIN_DASHBOARD') {
       return <div className="text-center text-slate-400">Checking connection status...</div>;
     }
 
@@ -124,7 +126,6 @@ function App() {
   };
   
   const handleHeaderClick = () => {
-    // Navigate to the home page if on an admin view
     if (view === 'ADMIN_LOGIN' || view === 'ADMIN_DASHBOARD') {
       window.location.href = '/';
     }
@@ -134,7 +135,7 @@ function App() {
 
   return (
     <div className="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans">
-      <div className={`w-full ${isAdminView ? 'max-w-4xl' : 'max-w-md'} mx-auto bg-slate-800/50 rounded-2xl shadow-2xl shadow-black/50 p-6 md:p-8 border border-slate-700 backdrop-blur-sm`}>
+      <div className={`w-full ${isAdminView ? 'max-w-5xl' : 'max-w-md'} mx-auto bg-slate-800/50 rounded-2xl shadow-2xl shadow-black/50 p-6 md:p-8 border border-slate-700 backdrop-blur-sm`}>
         <header onClick={handleHeaderClick} className={`flex flex-col items-center mb-6 ${isAdminView ? '' : 'cursor-pointer group'}`}>
           <WifiIcon className={`w-12 h-12 text-sky-400 ${isAdminView ? '' : 'group-hover:text-sky-300'} transition-colors`} />
           <h1 className={`mt-2 text-xl font-bold text-center tracking-wider text-slate-200 ${isAdminView ? '' : 'group-hover:text-white'} transition-colors`}>{networkSsid}</h1>

@@ -1,4 +1,3 @@
-// FIX: Defined shared TypeScript types for the application.
 export interface WifiSession {
   voucherCode: string;
   startTime: number;
@@ -18,7 +17,7 @@ export interface NetworkSettings {
 
 export interface Voucher {
   code: string;
-  duration: number; // in seconds
+  duration: number;
   used: boolean;
 }
 

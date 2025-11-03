@@ -1,10 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
 export const generateWifiName = async (): Promise<string> => {
-    // FIX: Moved API key check and AI client initialization inside the function.
-    // This ensures the application does not crash on startup if the API_KEY
-    // environment variable is missing, and provides a clear error message
-    // at the time of use, which is caught and displayed by the UI.
     if (!process.env.API_KEY) {
         console.error("API_KEY environment variable not set for Gemini.");
         throw new Error("Gemini API key is not configured.");
