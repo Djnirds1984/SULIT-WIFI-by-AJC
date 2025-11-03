@@ -322,9 +322,27 @@ app.put('/api/admin/settings', authMiddleware, async (req, res) => {
 
 app.get('/api/admin/network-config', authMiddleware, async(req, res) => {
     try {
-        const config = await DB.getSetting('networkConfig');
-        res.json(JSON.parse(config.value));
+        const setting = await DB.getSetting('networkConfig');
+        if (setting && setting.value) {
+            res.json(JSON.parse(setting.value));
+        } else {
+            // If setting is not found, return a default configuration.
+            // This prevents a crash if the DB row is missing and allows the admin to set it.
+            console.warn('[Admin] networkConfig setting not found in DB. Returning default.');
+            res.json({
+                wanInterface: "eth0",
+                hotspotInterface: "wlan0",
+                hotspotIpAddress: "192.168.200.13",
+                hotspotDhcpServer: {
+                    enabled: true,
+                    start: "192.168.200.100",
+                    end: "192.168.200.200",
+                    lease: "12h"
+                }
+            });
+        }
     } catch (error) {
+        console.error('[API /network-config] Error loading network config:', error);
         res.status(500).json({ message: 'Failed to load network configuration.' });
     }
 });
