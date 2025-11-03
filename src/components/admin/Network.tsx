@@ -13,7 +13,6 @@ const Network: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
-    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const fetchData = async () => {
@@ -37,9 +36,9 @@ const Network: React.FC = () => {
         fetchData();
     }, []);
 
-    // Memoized validation
-    const isFormValid = useMemo(() => {
-        if (!config) return false;
+    // Memoized validation logic without side effects
+    const formErrors = useMemo(() => {
+        if (!config) return {};
         const errors: Record<string, string> = {};
         if (!isValidIp(config.hotspotIpAddress)) {
             errors.hotspotIpAddress = 'Invalid IP format.';
@@ -52,9 +51,10 @@ const Network: React.FC = () => {
                 errors.dhcpEnd = 'Invalid IP format.';
             }
         }
-        setFormErrors(errors);
-        return Object.keys(errors).length === 0;
+        return errors;
     }, [config]);
+
+    const isFormValid = useMemo(() => Object.keys(formErrors).length === 0, [formErrors]);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -109,7 +109,8 @@ app.get('/api/public/settings', async (req, res) => {
     try {
         const ssidSetting = await DB.getSetting('networkSsid');
         res.json({
-            ssid: ssidSetting?.value ? JSON.parse(ssidSetting.value) : 'SULIT WIFI',
+            // FIX: The value is already parsed by the DB driver.
+            ssid: ssidSetting?.value ?? 'SULIT WIFI',
             geminiApiKey: process.env.API_KEY || null
         });
     } catch (error) {
@@ -313,7 +314,8 @@ app.post('/api/admin/vouchers', authMiddleware, async (req, res) => {
 app.get('/api/admin/settings', authMiddleware, async (req, res) => {
     try {
         const ssidSetting = await DB.getSetting('networkSsid');
-        res.json({ ssid: ssidSetting?.value ? JSON.parse(ssidSetting.value) : 'SULIT WIFI' });
+        // FIX: The value is already parsed by the DB driver.
+        res.json({ ssid: ssidSetting?.value ?? 'SULIT WIFI' });
     } catch (error) {
         res.status(500).json({ message: 'Failed to load settings.' });
     }
@@ -336,7 +338,8 @@ app.get('/api/admin/network-config', authMiddleware, async(req, res) => {
     try {
         const setting = await DB.getSetting('networkConfig');
         if (setting && setting.value) {
-            res.json(JSON.parse(setting.value));
+            // FIX: The value is already parsed by the DB driver.
+            res.json(setting.value);
         } else {
             // If setting is not found, return a default configuration.
             // This prevents a crash if the DB row is missing and allows the admin to set it.
