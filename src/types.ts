@@ -44,7 +44,6 @@ export interface Voucher {
 }
 
 export interface NetworkConfig {
-    wanInterface: string;
     hotspotInterface: string;
     hotspotIpAddress: string;
     hotspotDhcpServer: {

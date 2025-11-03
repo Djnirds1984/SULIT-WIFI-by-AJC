@@ -1,7 +1,7 @@
 // --- SULIT WIFI Unified Server ---
 const express = require('express');
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
 const { exec } = require('child_process');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -276,6 +276,17 @@ app.get('/api/admin/network-info', authMiddleware, async (req, res) => {
     }
 });
 
+app.get('/api/admin/network-wan-info', authMiddleware, async (req, res) => {
+    try {
+        // This command reliably finds the interface used for the default route (i.e., the WAN interface).
+        const wanInterface = await executeSystemCommand("ip route | grep default | awk '{print $5}'");
+        res.json({ name: wanInterface || 'Unknown' });
+    } catch (error) {
+        console.error("Failed to detect WAN interface:", error);
+        res.status(500).json({ message: "Could not detect WAN interface." });
+    }
+});
+
 
 app.get('/api/admin/vouchers', authMiddleware, async (req, res) => {
     try {
@@ -331,7 +342,6 @@ app.get('/api/admin/network-config', authMiddleware, async(req, res) => {
             // This prevents a crash if the DB row is missing and allows the admin to set it.
             console.warn('[Admin] networkConfig setting not found in DB. Returning default.');
             res.json({
-                wanInterface: "eth0",
                 hotspotInterface: "wlan0",
                 hotspotIpAddress: "192.168.200.13",
                 hotspotDhcpServer: {
@@ -414,13 +424,16 @@ app.post('/api/admin/database/reset', authMiddleware, async (req, res) => {
 // --- Backup and Restore API ---
 app.get('/api/admin/backups/list', authMiddleware, async (req, res) => {
     try {
-        const files = await fs.readdir(BACKUP_DIR);
+        const files = await fs.promises.readdir(BACKUP_DIR);
         const backupFiles = files
             .filter(file => file.endsWith('.json'))
             .sort()
             .reverse(); // Show newest first
         res.json(backupFiles);
     } catch (error) {
+        if (error.code === 'ENOENT') { // Directory doesn't exist yet
+            return res.json([]);
+        }
         console.error("Failed to list backups:", error);
         res.status(500).json({ message: "Could not list backups." });
     }
@@ -433,7 +446,7 @@ app.post('/api/admin/backups/create', authMiddleware, async (req, res) => {
         const filename = `sulitwifi_backup_${timestamp}.json`;
         const filepath = path.join(BACKUP_DIR, filename);
         
-        await fs.writeFile(filepath, JSON.stringify(backupData, null, 2));
+        await fs.promises.writeFile(filepath, JSON.stringify(backupData, null, 2));
         
         res.status(201).json({ message: `Backup created successfully: ${filename}` });
     } catch (error) {
@@ -449,7 +462,7 @@ app.post('/api/admin/backups/restore', authMiddleware, async (req, res) => {
     }
     try {
         const filepath = path.join(BACKUP_DIR, filename);
-        const fileContent = await fs.readFile(filepath, 'utf-8');
+        const fileContent = await fs.promises.readFile(filepath, 'utf-8');
         const backupData = JSON.parse(fileContent);
         await DB.restoreFromBackup(backupData);
         res.json({ message: `Restored from ${filename}. Server is restarting...` });
@@ -471,7 +484,7 @@ app.delete('/api/admin/backups/delete', authMiddleware, async (req, res) => {
     }
     try {
         const filepath = path.join(BACKUP_DIR, filename);
-        await fs.unlink(filepath);
+        await fs.promises.unlink(filepath);
         res.json({ message: `Deleted backup: ${filename}` });
     } catch (error) {
         console.error(`Failed to delete backup ${filename}:`, error);
@@ -512,7 +525,7 @@ const startServer = async () => {
         console.log('[DB] Database schema is up to date.');
 
         console.log('[Server] Ensuring backup directory exists...');
-        await fs.mkdir(BACKUP_DIR, { recursive: true });
+        await fs.promises.mkdir(BACKUP_DIR, { recursive: true });
         console.log(`[Server] Backup directory is ready at ${BACKUP_DIR}`);
 
         app.listen(PORT, '0.0.0.0', () => {

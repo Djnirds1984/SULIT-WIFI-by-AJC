@@ -85,6 +85,11 @@ export const getNetworkInfo = async (): Promise<NetworkInterface[]> => {
     return handleResponse(response);
 };
 
+export const getWanInfo = async (): Promise<{ name: string }> => {
+    const response = await fetch('/api/admin/network-wan-info', { headers: getAuthHeaders() });
+    return handleResponse(response);
+};
+
 export const getVouchers = async (): Promise<Voucher[]> => {
     const response = await fetch('/api/admin/vouchers', { headers: getAuthHeaders() });
     return handleResponse(response);
