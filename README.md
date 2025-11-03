@@ -85,13 +85,26 @@ The application requires a PostgreSQL database to store all persistent data.
         -- Create a new user with a secure password (replace 'your_secure_password'!)
         CREATE USER sulituser WITH PASSWORD 'your_secure_password';
 
-        -- Grant all permissions for the new database to the new user
+        -- Grant the user permission to connect to the new database
         GRANT ALL PRIVILEGES ON DATABASE sulitwifi TO sulituser;
+
+        -- Exit the psql shell for now
+        \q
+        ```
+
+3.  **Grant Schema Permissions**:
+    *   The user needs permission to create tables. Log back into `psql` as the `postgres` user if you exited.
+        ```bash
+        sudo -u postgres psql
+        ```
+    *   Run the following command to grant the necessary permissions:
+        ```sql
+        -- Grant all permissions on the 'public' schema (where tables are created) to your new user
+        GRANT ALL ON SCHEMA public TO sulituser;
 
         -- Exit the psql shell
         \q
         ```
-
 ---
 
 ## Step 3: Backend & Frontend Setup
@@ -287,4 +300,19 @@ This means another process is already using one of the required ports.
     ```
 
 ### Error: `error: password authentication failed for user "sulituser"`
-This error in the PM2 logs means the database password in your `.env` file is incorrect. Double-check it against the password you set in Step 2.
+This error in the PM2 logs means the database password in your `.env` file is incorrect. Double-check it against the password you set in Step 2. If you've forgotten the password, you must reset it in `psql`: `ALTER USER sulituser WITH PASSWORD 'new_password';`
+
+### Error: `error: permission denied for schema public`
+This error means the `sulituser` can connect to the database but does not have permission to create or modify tables.
+
+**How to Fix:**
+
+1.  **Log in to the PostgreSQL shell**:
+    ```bash
+    sudo -u postgres psql
+    ```
+2.  **Grant the required permissions**:
+    ```sql
+    GRANT ALL ON SCHEMA public TO sulituser;
+    ```
+3.  **Exit the shell** (`\q`) and restart the application (`pm2 restart sulit-wifi`).

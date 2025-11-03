@@ -1,4 +1,3 @@
-
 // SULIT WIFI Backend Server for Orange Pi One
 // This server handles API requests from the frontend, manages user sessions,
 // validates vouchers, and interacts with the Orange Pi's GPIO pins for a
@@ -595,6 +594,12 @@ const startServer = async () => {
             console.error('\n================================================================');
             console.error('[DB] FATAL: Database password authentication failed for user "sulituser".');
             console.error('Please check that the PGPASSWORD in your .env file is correct.');
+            console.error('================================================================\n');
+        } else if (error.code === '42501') { // PostgreSQL permission denied error code
+            console.error('\n================================================================');
+            console.error('[DB] FATAL: Database permission denied for user "sulituser".');
+            console.error('The user does not have permission to create tables. Please grant schema permissions.');
+            console.error('See the troubleshooting section in README.md for the fix.');
             console.error('================================================================\n');
         } else {
             console.error('[SERVER] FATAL: Could not start server. An unexpected error occurred.', error);
