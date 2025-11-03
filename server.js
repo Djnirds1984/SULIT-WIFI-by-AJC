@@ -15,6 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const db = require('./backend/postgres.js');
 
 const promiseExec = util.promisify(exec);
@@ -478,6 +479,14 @@ adminApp.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html'))
 // --- PORTAL SERVER API (Port 3001) ---
 // ===============================================
 portalApp.use(cors()); portalApp.use(bodyParser.json());
+
+// FIX: Proxy admin requests from the portal server to the admin server.
+// This allows admins to log in and manage the hotspot while connected to the local Wi-Fi.
+portalApp.use('/api/admin', createProxyMiddleware({
+    target: `http://localhost:${ADMIN_PORT}`,
+    changeOrigin: true,
+}));
+
 
 portalApp.get('/api/public/settings', async (req, res) => {
     const settings = await db.getSettings();
