@@ -1,16 +1,13 @@
 // SULIT WIFI - PostgreSQL Database Module
 // NOTE: This file has a .ts extension but contains JavaScript for compatibility
 // with the existing Node.js server setup.
-// FIX: Add reference to node types to resolve errors with `require`, `process`, and `module`.
-/// <reference types="node" />
 
-// FIX: Declare Node.js globals to resolve TypeScript errors in environments where @types/node may not be properly resolved.
-declare var require: any;
-declare var process: any;
-declare var module: any;
-
-const { Pool } = require('pg');
-const bcrypt = require('bcrypt');
+// FIX: Replaced require with import for TypeScript compatibility.
+import { Pool } from 'pg';
+// FIX: Replaced require with import for TypeScript compatibility.
+import * as bcrypt from 'bcrypt';
+// FIX: Imported exit from process to handle process termination explicitly.
+import { exit } from 'process';
 
 // The connection pool will automatically use environment variables
 // (PGUSER, PGHOST, PGDATABASE, PGPASSWORD, PGPORT)
@@ -18,11 +15,11 @@ const pool = new Pool();
 
 pool.on('error', (err, client) => {
     console.error('Unexpected error on idle PostgreSQL client', err);
-    process.exit(-1);
+    // FIX: Used imported exit function instead of process.exit.
+    exit(-1);
 });
 
 // Generic query function for logging and execution
-// FIX: Converted to plain JavaScript to resolve Node.js runtime syntax errors.
 const query = async (text, params) => {
     const start = Date.now();
     try {
@@ -41,7 +38,6 @@ const initializeDatabase = async () => {
     console.log('[DB] Initializing database schema...');
     try {
         // SETTINGS TABLE (stores SSID, network config, etc.)
-        // FIX: Added empty array for params argument to match query function signature.
         await query(`
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -50,7 +46,6 @@ const initializeDatabase = async () => {
         `, []);
 
         // ADMIN TABLE (for login)
-        // FIX: Added empty array for params argument to match query function signature.
         await query(`
             CREATE TABLE IF NOT EXISTS admin (
                 id SERIAL PRIMARY KEY,
@@ -61,7 +56,6 @@ const initializeDatabase = async () => {
         `, []);
 
         // VOUCHERS TABLE
-        // FIX: Added empty array for params argument to match query function signature.
         await query(`
             CREATE TABLE IF NOT EXISTS vouchers (
                 code TEXT PRIMARY KEY,
@@ -72,7 +66,6 @@ const initializeDatabase = async () => {
         `, []);
 
         // SESSIONS TABLE (active user sessions)
-        // FIX: Added empty array for params argument to match query function signature.
         await query(`
             CREATE TABLE IF NOT EXISTS sessions (
                 mac_address TEXT PRIMARY KEY,
@@ -89,13 +82,13 @@ const initializeDatabase = async () => {
 
     } catch (error) {
         console.error('[DB] FATAL: Could not initialize database schema.', error);
-        process.exit(1);
+        // FIX: Used imported exit function instead of process.exit.
+        exit(1);
     }
 };
 
 const seedInitialData = async () => {
     // Seed default admin user if none exists
-    // FIX: Added empty array for params argument to match query function signature.
     const adminRes = await query('SELECT COUNT(*) FROM admin', []);
     if (adminRes.rows[0].count === '0') {
         const defaultPassword = 'admin'; // This should be changed immediately by the user
@@ -133,7 +126,8 @@ const seedInitialData = async () => {
 
 // --- Module Exports (Database API) ---
 
-module.exports = {
+// FIX: Replaced module.exports with export = for TypeScript CJS module compatibility.
+export = {
     initializeDatabase,
     query,
 
@@ -167,7 +161,6 @@ module.exports = {
         return res.rows[0];
     },
     getAllVouchers: async () => {
-        // FIX: Added empty array for params argument to match query function signature.
         const res = await query('SELECT code, duration_seconds as duration, is_used as used FROM vouchers ORDER BY created_at DESC', []);
         return res.rows;
     },
@@ -184,11 +177,8 @@ module.exports = {
 
     // --- Stats ---
     getDashboardStats: async () => {
-        // FIX: Added empty array for params argument to match query function signature.
         const sessionsRes = query('SELECT COUNT(*) FROM sessions', []);
-        // FIX: Added empty array for params argument to match query function signature.
         const usedRes = query("SELECT COUNT(*) FROM vouchers WHERE is_used = TRUE", []);
-        // FIX: Added empty array for params argument to match query function signature.
         const availableRes = query("SELECT COUNT(*) FROM vouchers WHERE is_used = FALSE", []);
 
         const [sessions, used, available] = await Promise.all([sessionsRes, usedRes, availableRes]);
@@ -202,7 +192,6 @@ module.exports = {
 
     // --- Settings ---
     getSettings: async () => {
-        // FIX: Added empty array for params argument to match query function signature.
         const res = await query("SELECT value FROM settings WHERE key = 'app_settings'", []);
         if (res.rows.length === 0) {
             console.error("CRITICAL: No settings found in database.");
