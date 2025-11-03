@@ -22,7 +22,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "http-proxy-middleware": "^3.0.0",
     "jsonwebtoken": "^9.0.2",
     "onoff": "^6.0.3",
     "pg": "^8.12.0"

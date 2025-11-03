@@ -19,11 +19,10 @@ This guide provides step-by-step instructions for deploying the SULIT WIFI hotsp
 
 ## Project Overview
 
-This application creates a captive portal for a Wi-Fi hotspot. It features a unique two-server architecture for enhanced security and manageability.
+This application creates a captive portal for a Wi-Fi hotspot, running on a single, efficient Node.js server.
 
-- **Portal Server (Port 3001)**: Handles all user-facing interactions for the local Wi-Fi network. This includes the voucher/coin login page, session management, and hardware integration. It is designed to be private and only accessible to clients connected to the hotspot.
-- **Admin Server (Port 3002)**: A separate, dedicated server for the admin panel. This allows for secure remote management of the hotspot (dashboard, voucher generation, settings) over the WAN, without exposing the user portal to the internet.
-- **Frontend**: A single React application that is compiled into a static JavaScript bundle for performance and reliability. It communicates with the appropriate backend server depending on whether it's rendering the user portal or the admin panel.
+- **Unified Server (Port 3001)**: A single, robust Express.js application handles all user-facing interactions (voucher/coin login), secure admin panel APIs (dashboard, settings), and hardware integration. This simplified architecture removes complexity and improves reliability.
+- **Frontend**: A single React application compiled into a static JavaScript bundle for performance. It intelligently communicates with the backend, rendering either the user portal or the admin panel based on the URL.
 - **Database**: A persistent PostgreSQL database stores all vouchers, sessions, and system settings, ensuring data is safe across reboots.
 
 ## Hardware & Software Prerequisites
@@ -84,27 +83,15 @@ The application requires a PostgreSQL database to store all persistent data.
 
         -- Create a new user with a secure password (replace 'your_secure_password'!)
         CREATE USER sulituser WITH PASSWORD 'your_secure_password';
-
-        -- Grant the user permission to connect to the new database
-        GRANT ALL PRIVILEGES ON DATABASE sulitwifi TO sulituser;
-
-        -- Exit the psql shell for now
-        \q
-        ```
-
-3.  **Grant Schema Permissions**:
-    *   The user needs permission to create tables. Log back into `psql` as the `postgres` user if you exited.
-        ```bash
-        sudo -u postgres psql
-        ```
-    *   Run the following command to grant the necessary permissions:
-        ```sql
-        -- Grant all permissions on the 'public' schema (where tables are created) to your new user
-        GRANT ALL ON SCHEMA public TO sulituser;
+        
+        -- Make the new user the owner of the database for full permissions
+        ALTER DATABASE sulitwifi OWNER TO sulituser;
 
         -- Exit the psql shell
         \q
         ```
+    *   By making `sulituser` the owner, you grant all necessary privileges, including schema permissions, in a single step.
+
 ---
 
 ## Step 3: Backend & Frontend Setup
@@ -115,11 +102,11 @@ The application requires a PostgreSQL database to store all persistent data.
     cd sulit-wifi-portal
     ```
 2.  **Configure Database Connection**:
-    *   Create a `.env` file in the project root to store your database credentials. This keeps them secure and out of the source code.
+    *   Create a `.env` file in the project root to store your database credentials.
         ```bash
         nano .env
         ```
-    *   Add the following lines to the `.env` file, replacing the values with the ones you just created.
+    *   Add the following lines, replacing `your_secure_password` with the one you created.
         ```
         # PostgreSQL Connection Details
         PGHOST=localhost
@@ -130,7 +117,7 @@ The application requires a PostgreSQL database to store all persistent data.
         ```
     *   Press `CTRL+X`, then `Y`, then `Enter` to save and exit.
 
-3.  **Install Dependencies**: This command installs all required Node.js packages, including the PostgreSQL client and password hashing libraries.
+3.  **Install Dependencies**:
     ```bash
     npm install
     ```
@@ -154,43 +141,26 @@ The application requires a PostgreSQL database to store all persistent data.
 
 ## Step 5: Nginx & Captive Portal Configuration
 
-We use Nginx as a reverse proxy for both servers and `nodogsplash` as the captive portal software. This setup isolates traffic: the portal is only visible on the local Wi-Fi network, while the admin panel is visible on the WAN.
+We use Nginx as a reverse proxy and `nodogsplash` as the captive portal software.
 
 ### 1. Install Nginx and Nodogsplash
 ```bash
 sudo apt-get install -y nginx nodogsplash
 ```
 
-### 2. Configure Nginx
-Nginx will route traffic based on the IP address it's accessed from.
+### 2. Configure Nginx (Simplified)
+Nginx will forward all HTTP traffic to our single Node.js application.
 
 *   **Create Nginx config file**: `sudo nano /etc/nginx/sites-available/sulit-wifi-portal`
-*   **Paste the following configuration**, replacing `192.168.200.13` with your Pi's LAN IP address (the one you will set in the admin panel).
+*   **Paste the following simplified configuration**:
     ```nginx
-    # Server block for the User Portal (Captive Portal)
-    # Listens ONLY on the local network interface.
-    server {
-        listen 192.168.200.13:80; # IMPORTANT: Replace with your Pi's LAN IP
-        server_name 192.168.200.13;
-
-        location / {
-            proxy_pass http://localhost:3001;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_cache_bypass $http_upgrade;
-        }
-    }
-
-    # Server block for the Admin Panel
-    # Listens on all other interfaces (including WAN) as the default server.
+    # This single server block handles all traffic and proxies it to our app
     server {
         listen 80 default_server;
         listen [::]:80 default_server;
 
         location / {
-            proxy_pass http://localhost:3002;
+            proxy_pass http://localhost:3001; # Forward all traffic to the app
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
@@ -207,7 +177,7 @@ Nginx will route traffic based on the IP address it's accessed from.
 *   **Test and restart Nginx**: `sudo nginx -t` followed by `sudo systemctl restart nginx`.
 
 ### 3. Configure Nodogsplash
-Redirect captive portal clients to the Nginx proxy on the LAN IP. The server will now manage the `splash.html` file automatically based on your network settings. You only need to set the gateway interface.
+Redirect captive portal clients to the portal's static IP address (which you will set in the admin panel).
 
 *   **Edit config**: `sudo nano /etc/nodogsplash/nodogsplash.conf`
     *   Set `GatewayInterface wlan0` (or your Wi-Fi adapter's name).
@@ -225,23 +195,18 @@ Redirect captive portal clients to the Nginx proxy on the LAN IP. The server wil
         ```
         API_KEY="your_gemini_api_key_here"
         ```
-2.  **Start the Backend with PM2**:
+2.  **Start the Server with PM2**:
     *   Install PM2: `sudo npm install pm2 -g`
     *   **Start the server**:
         ```bash
         cd ~/sulit-wifi-portal
-        # This command runs the `start` script from package.json, which builds the frontend then starts the server.
+        # This command builds the frontend then starts the unified server.
         pm2 start npm --name "sulit-wifi" -- start
         ```
     *   **Manage with PM2**:
-        *   `pm2 list`: Show all running applications.
+        *   `pm2 list`: Show running apps.
         *   `pm2 logs sulit-wifi`: View live logs.
-        *   `pm2 stop sulit-wifi`: Stop the application.
-        *   `pm2 delete sulit-wifi`: Remove the application from PM2's list.
-    *   **Applying Changes**: If you modify any frontend (`.tsx`, `.ts`) or backend (`server.js`) files, you must restart the application to rebuild the code and apply the changes.
-        ```bash
-        pm2 restart sulit-wifi
-        ```
+        *   `pm2 restart sulit-wifi`: Restart after making code changes.
     *   **Enable on boot**: `pm2 save` then `pm2 startup` (follow the on-screen command).
 
 3.  **Start Nodogsplash**:
@@ -253,66 +218,27 @@ Redirect captive portal clients to the Nginx proxy on the LAN IP. The server wil
 
 ## Step 7: Admin Panel WAN Access
 
-The Admin Server is proxied by Nginx on port `80`. To access it from outside your local hotspot network (e.g., from your main home network or the internet), you need to allow HTTP traffic through the firewall.
+With the simplified Nginx config, the admin panel is accessible on port `80` from any network connected to the Orange Pi.
 
 1.  **Configure Firewall (UFW)**: If you use `ufw` (Uncomplicated Firewall) on Armbian:
     ```bash
-    # Allow incoming HTTP traffic on port 80
     sudo ufw allow 80/tcp
-    
-    # Enable the firewall if it's not already running
     sudo ufw enable
     ```
     If you are behind another router, you may also need to set up port forwarding on that router to forward traffic from its WAN IP on port `80` to your Orange Pi's IP on port `80`.
 
-2.  **Access the Admin Panel**: You can now access the admin panel using your Orange Pi's WAN-facing IP address without a port:
-    `http://<YOUR_ORANGE_PI_WAN_IP>/admin`
+2.  **Access the Admin Panel**:
+    `http://<YOUR_ORANGE_PI_IP>/admin`
 
 ---
 
 ## Troubleshooting
 
-### Error: `listen EADDRINUSE: address already in use :::3001` or `:::3002`
-
-This means another process is already using one of the required ports.
-
-**How to Fix:**
-
-1.  **Find the conflicting process**:
-    ```bash
-    # Check for port 3001
-    sudo lsof -i :3001
-    # Check for port 3002
-    sudo lsof -i :3002
-    ```
-    Note the Process ID (PID) from the output.
-
-2.  **Stop the process**:
-    ```bash
-    # Replace <PID> with the number you found
-    sudo kill -9 <PID>
-    ```
-
-3.  **Restart with PM2**:
-    ```bash
-    cd ~/sulit-wifi-portal
-    pm2 restart sulit-wifi
-    ```
+### Error: `listen EADDRINUSE: address already in use :::3001`
+Another process is using port 3001. Find it with `sudo lsof -i :3001`, note the PID, and stop it with `sudo kill -9 <PID>`. Then restart the app.
 
 ### Error: `error: password authentication failed for user "sulituser"`
-This error in the PM2 logs means the database password in your `.env` file is incorrect. Double-check it against the password you set in Step 2. If you've forgotten the password, you must reset it in `psql`: `ALTER USER sulituser WITH PASSWORD 'new_password';`
+The password in your `.env` file is incorrect. Double-check it. If forgotten, reset it in `psql`: `ALTER USER sulituser WITH PASSWORD 'new_password';`
 
 ### Error: `error: permission denied for schema public`
-This error means the `sulituser` can connect to the database but does not have permission to create or modify tables.
-
-**How to Fix:**
-
-1.  **Log in to the PostgreSQL shell**:
-    ```bash
-    sudo -u postgres psql
-    ```
-2.  **Grant the required permissions**:
-    ```sql
-    GRANT ALL ON SCHEMA public TO sulituser;
-    ```
-3.  **Exit the shell** (`\q`) and restart the application (`pm2 restart sulit-wifi`).
+The `sulituser` does not have ownership of the database. Fix this in `psql` with: `ALTER DATABASE sulitwifi OWNER TO sulituser;` then restart the app.
