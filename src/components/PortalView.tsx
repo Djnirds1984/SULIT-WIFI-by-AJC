@@ -4,7 +4,8 @@ import { Session } from '../types';
 import Timer from './Timer';
 import ConnectView from './ConnectView';
 import WifiNameGenerator from './WifiNameGenerator';
-import { WifiIcon } from './icons/WifiIcon';
+// FIX: Change named import to default import for WifiIcon.
+import WifiIcon from './icons/WifiIcon';
 
 const PortalView: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);

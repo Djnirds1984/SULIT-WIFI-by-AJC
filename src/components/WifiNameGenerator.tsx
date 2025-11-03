@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { generateWifiName } from '../services/geminiService';
+// FIX: Change named import to default import for CogIcon.
 import { CogIcon } from './icons/CogIcon';
 
 interface WifiNameGeneratorProps {
