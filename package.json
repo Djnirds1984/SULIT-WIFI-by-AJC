@@ -1,1 +1,34 @@
-full contents of package.json
+{
+  "name": "sulit-wifi-portal",
+  "version": "1.1.0",
+  "description": "A SULIT WIFI hotspot portal for Orange Pi One.",
+  "main": "server.js",
+  "scripts": {
+    "start": "npm run build && node server.js",
+    "build": "npm run clean && npm run build:css && npm run build:js",
+    "build:js": "esbuild src/index.tsx --bundle --outfile=public/dist/bundle.js --minify --external:react --external:react-dom/client --external:@google/genai",
+    "build:css": "tailwindcss -i src/styles.css -o public/dist/styles.css --minify",
+    "clean": "rimraf ./public/dist"
+  },
+  "keywords": [
+    "wifi",
+    "hotspot",
+    "portal",
+    "orange-pi"
+  ],
+  "author": "AJC",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "onoff": "^6.0.3",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0",
+    "rimraf": "^5.0.10",
+    "tailwindcss": "^3.4.7"
+  }
+}
