@@ -14,6 +14,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-j
 const COIN_SLOT_GPIO_PIN = 7;
 const COIN_SESSION_DURATION_SECONDS = 15 * 60; // 15 minutes
 const BACKUP_DIR = path.join(__dirname, 'backups');
+const DB_CONNECT_RETRIES = 5;
+const DB_CONNECT_RETRY_DELAY_MS = 5000;
 
 const app = express();
 app.use(express.json());
@@ -591,11 +593,40 @@ app.get('*', (req, res) => {
 
 // --- Server Startup ---
 const startServer = async () => {
-    try {
-        console.log('[DB] Connecting to database...');
-        await DB.checkConnection();
-        console.log('[DB] Database connection successful.');
+    // --- Database Connection with Retry ---
+    let connected = false;
+    for (let i = 1; i <= DB_CONNECT_RETRIES; i++) {
+        try {
+            console.log(`[DB] Attempting to connect to database (attempt ${i}/${DB_CONNECT_RETRIES})...`);
+            await DB.checkConnection();
+            console.log('[DB] Database connection successful.');
+            connected = true;
+            break; // Exit loop on successful connection
+        } catch (error) {
+            console.error(`[DB] Connection attempt ${i} failed. Retrying in ${DB_CONNECT_RETRY_DELAY_MS / 1000} seconds...`);
+            if (i === DB_CONNECT_RETRIES) {
+                // Last attempt failed, show detailed error and exit
+                console.error('\n[FATAL] Could not connect to the database after multiple retries.');
+                if (error.code === '28P01') {
+                    console.error('[Reason] Authentication failed. Please check the PGPASSWORD in your .env file.\n');
+                } else if (error.code === 'ECONNREFUSED') {
+                    console.error('[Reason] Connection refused. Is the PostgreSQL server running and listening on port 5432?\n');
+                } else {
+                    console.error('[Details]:', error);
+                }
+                process.exit(1);
+            }
+            await new Promise(res => setTimeout(res, DB_CONNECT_RETRY_DELAY_MS));
+        }
+    }
 
+    if (!connected) {
+        console.error('[FATAL] Failed to establish database connection. Exiting.');
+        process.exit(1);
+    }
+
+    // --- Continue with Server Startup ---
+    try {
         console.log('[DB] Initializing database schema...');
         await DB.initializeDatabase();
         console.log('[DB] Database schema is up to date.');
@@ -609,10 +640,8 @@ const startServer = async () => {
         });
 
     } catch (error) {
-        console.error('\n[FATAL] A critical error occurred during startup:');
-        if (error.code === '28P01') { // PostgreSQL password auth failed
-             console.error('[DB] Could not connect to database. Please check that the PGPASSWORD in your .env file is correct.\n');
-        } else if (error.code === '42501') { // PostgreSQL permission denied
+        console.error('\n[FATAL] A critical error occurred during startup after DB connection:');
+        if (error.code === '42501') { // PostgreSQL permission denied
             console.error('[DB] The database user does not have permission. Please run:');
             console.error(`[DB] "ALTER DATABASE ${process.env.PGDATABASE} OWNER TO ${process.env.PGUSER};" in psql.\n`);
         } else {
