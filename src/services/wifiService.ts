@@ -161,3 +161,35 @@ export const resetPortalHtml = async (): Promise<{ html: string }> => {
     });
     return handleResponse(response);
 };
+
+// --- Backup & Restore API ---
+export const listBackups = async (): Promise<string[]> => {
+    const response = await fetch('/api/admin/backups/list', { headers: getAuthHeaders() });
+    return handleResponse(response);
+};
+
+export const createBackup = async (): Promise<{ message: string }> => {
+    const response = await fetch('/api/admin/backups/create', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+};
+
+export const restoreBackup = async (filename: string): Promise<{ message: string }> => {
+    const response = await fetch('/api/admin/backups/restore', {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+    });
+    return handleResponse(response);
+};
+
+export const deleteBackup = async (filename: string): Promise<{ message: string }> => {
+    const response = await fetch('/api/admin/backups/delete', {
+        method: 'DELETE',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+    });
+    return handleResponse(response);
+};

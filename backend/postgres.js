@@ -221,6 +221,54 @@ const updateSetting = async (key, value) => {
     await query("INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2", [key, valueJson]);
 };
 
+// --- BACKUP/RESTORE FUNCTIONS ---
+const createBackupData = async () => {
+    const settingsRes = await query('SELECT key, value FROM settings');
+    const vouchersRes = await query('SELECT code, duration, used, created_at FROM vouchers');
+
+    return {
+        timestamp: new Date().toISOString(),
+        settings: settingsRes.rows,
+        vouchers: vouchersRes.rows,
+    };
+};
+
+const restoreFromBackup = async (backupData) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        console.log('[DB Restore] Wiping existing vouchers and settings...');
+        await client.query('TRUNCATE TABLE vouchers, settings RESTART IDENTITY');
+
+        if (backupData.settings && backupData.settings.length > 0) {
+            console.log(`[DB Restore] Restoring ${backupData.settings.length} settings...`);
+            for (const setting of backupData.settings) {
+                const valueJson = typeof setting.value === 'string' ? setting.value : JSON.stringify(setting.value);
+                await client.query('INSERT INTO settings (key, value) VALUES ($1, $2)', [setting.key, valueJson]);
+            }
+        }
+
+        if (backupData.vouchers && backupData.vouchers.length > 0) {
+            console.log(`[DB Restore] Restoring ${backupData.vouchers.length} vouchers...`);
+            for (const voucher of backupData.vouchers) {
+                await client.query(
+                    'INSERT INTO vouchers (code, duration, used, created_at) VALUES ($1, $2, $3, $4)',
+                    [voucher.code, voucher.duration, voucher.used, voucher.created_at]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        console.log('[DB Restore] Restore successful. Commit complete.');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        console.error('[DB Restore] Error during restore, transaction rolled back.', e);
+        throw e;
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     query,
     checkConnection,
@@ -241,4 +289,6 @@ module.exports = {
     getAdminUser,
     getSetting,
     updateSetting,
+    createBackupData,
+    restoreFromBackup,
 };

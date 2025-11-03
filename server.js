@@ -1,7 +1,7 @@
 // --- SULIT WIFI Unified Server ---
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
 const { exec } = require('child_process');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -13,6 +13,7 @@ const PORT = 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-jwt';
 const COIN_SLOT_GPIO_PIN = 7;
 const COIN_SESSION_DURATION_SECONDS = 15 * 60; // 15 minutes
+const BACKUP_DIR = path.join(__dirname, 'backups');
 
 const app = express();
 app.use(express.json());
@@ -410,15 +411,83 @@ app.post('/api/admin/database/reset', authMiddleware, async (req, res) => {
 });
 
 
+// --- Backup and Restore API ---
+app.get('/api/admin/backups/list', authMiddleware, async (req, res) => {
+    try {
+        const files = await fs.readdir(BACKUP_DIR);
+        const backupFiles = files
+            .filter(file => file.endsWith('.json'))
+            .sort()
+            .reverse(); // Show newest first
+        res.json(backupFiles);
+    } catch (error) {
+        console.error("Failed to list backups:", error);
+        res.status(500).json({ message: "Could not list backups." });
+    }
+});
+
+app.post('/api/admin/backups/create', authMiddleware, async (req, res) => {
+    try {
+        const backupData = await DB.createBackupData();
+        const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 19);
+        const filename = `sulitwifi_backup_${timestamp}.json`;
+        const filepath = path.join(BACKUP_DIR, filename);
+        
+        await fs.writeFile(filepath, JSON.stringify(backupData, null, 2));
+        
+        res.status(201).json({ message: `Backup created successfully: ${filename}` });
+    } catch (error) {
+        console.error("Failed to create backup:", error);
+        res.status(500).json({ message: "Failed to create backup." });
+    }
+});
+
+app.post('/api/admin/backups/restore', authMiddleware, async (req, res) => {
+    const { filename } = req.body;
+    if (!filename || !filename.endsWith('.json') || filename.includes('..')) {
+        return res.status(400).json({ message: "Invalid filename." });
+    }
+    try {
+        const filepath = path.join(BACKUP_DIR, filename);
+        const fileContent = await fs.readFile(filepath, 'utf-8');
+        const backupData = JSON.parse(fileContent);
+        await DB.restoreFromBackup(backupData);
+        res.json({ message: `Restored from ${filename}. Server is restarting...` });
+        setTimeout(() => {
+            exec('pm2 restart sulit-wifi', (err) => {
+                if (err) console.error("Failed to restart with PM2:", err);
+            });
+        }, 1000);
+    } catch (error) {
+        console.error(`Failed to restore backup ${filename}:`, error);
+        res.status(500).json({ message: `Failed to restore from backup. Error: ${error.message}` });
+    }
+});
+
+app.delete('/api/admin/backups/delete', authMiddleware, async (req, res) => {
+    const { filename } = req.body;
+    if (!filename || !filename.endsWith('.json') || filename.includes('..')) {
+        return res.status(400).json({ message: "Invalid filename." });
+    }
+    try {
+        const filepath = path.join(BACKUP_DIR, filename);
+        await fs.unlink(filepath);
+        res.json({ message: `Deleted backup: ${filename}` });
+    } catch (error) {
+        console.error(`Failed to delete backup ${filename}:`, error);
+        if (error.code === 'ENOENT') {
+            return res.status(404).json({ message: "Backup file not found." });
+        }
+        res.status(500).json({ message: "Failed to delete backup." });
+    }
+});
+
 // Placeholder routes for features not yet implemented on backend
 app.get('/api/admin/portal-html', authMiddleware, (req, res) => res.json({ html: `<h1>SULIT WIFI Portal</h1><p>Placeholder</p>` }));
 app.put('/api/admin/portal-html', authMiddleware, (req, res) => res.json({ message: 'Saved successfully.' }));
 app.post('/api/admin/portal-html/reset', authMiddleware, (req, res) => res.json({ html: `<h1>SULIT WIFI Portal</h1><p>Placeholder</p>` }));
 app.get('/api/admin/updater/status', authMiddleware, (req, res) => res.json({ isUpdateAvailable: false, statusText: 'Updater not implemented.', localCommit: 'N/A' }));
 app.post('/api/admin/updater/update', authMiddleware, (req, res) => res.status(501).json({ message: 'Not Implemented' }));
-app.post('/api/admin/updater/backup', authMiddleware, (req, res) => res.status(501).json({ message: 'Not Implemented' }));
-app.post('/api/admin/updater/restore', authMiddleware, (req, res) => res.status(501).json({ message: 'Not Implemented' }));
-app.delete('/api/admin/updater/backup', authMiddleware, (req, res) => res.status(501).json({ message: 'Not Implemented' }));
 
 
 // --- Static File Serving & SPA Fallback ---
@@ -442,19 +511,23 @@ const startServer = async () => {
         await DB.initializeDatabase();
         console.log('[DB] Database schema is up to date.');
 
+        console.log('[Server] Ensuring backup directory exists...');
+        await fs.mkdir(BACKUP_DIR, { recursive: true });
+        console.log(`[Server] Backup directory is ready at ${BACKUP_DIR}`);
+
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`[Server] SULIT WIFI Portal listening on http://0.0.0.0:${PORT}`);
         });
 
     } catch (error) {
-        console.error('\n[DB] FATAL: Could not connect to or initialize the database.');
+        console.error('\n[FATAL] A critical error occurred during startup:');
         if (error.code === '28P01') { // PostgreSQL password auth failed
-             console.error('[DB] Please check that the PGPASSWORD in your .env file is correct.\n');
+             console.error('[DB] Could not connect to database. Please check that the PGPASSWORD in your .env file is correct.\n');
         } else if (error.code === '42501') { // PostgreSQL permission denied
             console.error('[DB] The database user does not have permission. Please run:');
             console.error(`[DB] "ALTER DATABASE ${process.env.PGDATABASE} OWNER TO ${process.env.PGUSER};" in psql.\n`);
         } else {
-             console.error('[DB] Error details:', error);
+             console.error('[Details]:', error);
         }
         process.exit(1);
     }
