@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { activateVoucher } from '../services/wifiService';
-// FIX: Change named import to default import for TicketIcon.
 import TicketIcon from './icons/TicketIcon';
 import { Session } from '../types';
 

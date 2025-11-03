@@ -4,7 +4,6 @@ import { Session } from '../types';
 import Timer from './Timer';
 import ConnectView from './ConnectView';
 import WifiNameGenerator from './WifiNameGenerator';
-// FIX: Change named import to default import for WifiIcon.
 import WifiIcon from './icons/WifiIcon';
 
 const PortalView: React.FC = () => {
@@ -97,7 +96,8 @@ const PortalView: React.FC = () => {
                 )}
             </main>
             <footer className="mt-8 text-center text-gray-500 text-sm">
-                <p>&copy; {new Date().getFullYear()} SULIT WIFI. All Rights Reserved.</p>
+                <p>Powered by SULIT Hotspot Solutions</p>
+                <p className="mt-1">Admin Panel v1.1.0</p>
             </footer>
         </div>
     );

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getUpdaterStatus } from '../../services/wifiService';
 import { UpdaterStatus } from '../../types';
-import { CloudArrowDownIcon, ArchiveBoxIcon, ArrowUturnLeftIcon, TrashIcon } from '../icons';
+import CloudArrowDownIcon from '../icons/CloudArrowDownIcon';
+import ArchiveBoxIcon from '../icons/ArchiveBoxIcon';
+import ArrowUturnLeftIcon from '../icons/ArrowUturnLeftIcon';
 
 const Updater: React.FC = () => {
     const [status, setStatus] = useState<UpdaterStatus | null>(null);
@@ -25,7 +27,7 @@ const Updater: React.FC = () => {
                     status && (
                         <div className="space-y-4">
                             <p><strong>Status:</strong> {status.statusText}</p>
-                            <p><strong>Current Version:</strong> {status.localCommit}</p>
+                            <p><strong>Current Version:</strong> <span className="font-mono text-sm">{status.localCommit}</span></p>
                             {status.isUpdateAvailable ? (
                                 <button
                                     onClick={() => handleAction('Update')}
@@ -35,7 +37,7 @@ const Updater: React.FC = () => {
                                     Update Now
                                 </button>
                             ) : (
-                                <p className="text-green-600">You are on the latest version.</p>
+                                <p className="text-green-600 font-semibold">You are on the latest version.</p>
                             )}
                         </div>
                     )

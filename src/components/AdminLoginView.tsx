@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { loginAdmin } from '../services/wifiService';
-import { LockClosedIcon, UserIcon } from './icons';
+import LockClosedIcon from './icons/LockClosedIcon';
+import UserIcon from './icons/UserIcon';
 
 interface AdminLoginViewProps {
     onLoginSuccess: () => void;

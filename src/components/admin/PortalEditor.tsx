@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getPortalHtml, updatePortalHtml, resetPortalHtml } from '../../services/wifiService';
-import { SaveIcon, ArrowPathIcon } from '../icons';
+import SaveIcon from '../icons/SaveIcon';
+import ArrowPathIcon from '../icons/ArrowPathIcon';
 
 const PortalEditor: React.FC = () => {
     const [html, setHtml] = useState('');

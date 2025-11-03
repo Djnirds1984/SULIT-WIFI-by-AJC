@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { getAdminStats, getSystemInfo } from '../../services/wifiService';
 import { AdminStats, SystemInfo } from '../../types';
-import { UserGroupIcon, TicketIcon, CpuChipIcon, MemoryChipIcon, SdCardIcon } from '../icons';
+import UserGroupIcon from '../icons/UserGroupIcon';
+import TicketIcon from '../icons/TicketIcon';
+import CpuChipIcon from '../icons/CpuChipIcon';
+import MemoryChipIcon from '../icons/MemoryChipIcon';
+import SdCardIcon from '../icons/SdCardIcon';
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.FC<any> }> = ({ title, value, icon: Icon }) => (
     <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
@@ -55,12 +59,13 @@ const Dashboard: React.FC = () => {
     }, []);
 
     if (loading) return <div>Loading dashboard...</div>;
-    if (error) return <div className="text-red-500">{error}</div>;
-
+    
     return (
         <div className="animate-fade-in space-y-8">
             <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
             
+            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">{error}</div>}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <StatCard title="Active Sessions" value={stats?.activeSessions ?? 'N/A'} icon={UserGroupIcon} />
                 <StatCard title="Vouchers Used" value={stats?.totalVouchersUsed ?? 'N/A'} icon={TicketIcon} />

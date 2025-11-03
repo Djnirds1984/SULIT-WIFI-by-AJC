@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getVouchers, createVoucher } from '../../services/wifiService';
 import { Voucher } from '../../types';
-// FIX: Change named import to default import for ClipboardIcon.
 import ClipboardIcon from '../icons/ClipboardIcon';
 
 const VoucherManager: React.FC = () => {

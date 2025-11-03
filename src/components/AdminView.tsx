@@ -5,7 +5,12 @@ import Settings from './admin/Settings';
 import Network from './admin/Network';
 import PortalEditor from './admin/PortalEditor';
 import Updater from './admin/Updater';
-import { ChartBarIcon, TicketIcon, CogIcon, WrenchScrewdriverIcon, CodeBracketIcon, CloudArrowDownIcon } from './icons';
+import ChartBarIcon from './icons/ChartBarIcon';
+import TicketIcon from './icons/TicketIcon';
+import CogIcon from './icons/CogIcon';
+import WrenchScrewdriverIcon from './icons/WrenchScrewdriverIcon';
+import CodeBracketIcon from './icons/CodeBracketIcon';
+import CloudArrowDownIcon from './icons/CloudArrowDownIcon';
 
 interface AdminViewProps {
     onLogout: () => void;
@@ -31,10 +36,10 @@ const AdminView: React.FC<AdminViewProps> = ({ onLogout }) => {
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon },
         { id: 'vouchers', label: 'Vouchers', icon: TicketIcon },
-        { id: 'network', label: 'Network', icon: WrenchScrewdriverIcon },
-        { id: 'editor', label: 'Portal Editor', icon: CodeBracketIcon },
-        { id: 'updater', label: 'Updater', icon: CloudArrowDownIcon },
         { id: 'settings', label: 'Settings', icon: CogIcon },
+        { id: 'network', label: 'Network', icon: WrenchScrewdriverIcon },
+        { id: 'updater', label: 'Updater', icon: CloudArrowDownIcon },
+        // { id: 'editor', label: 'Portal Editor', icon: CodeBracketIcon },
     ];
 
     return (
