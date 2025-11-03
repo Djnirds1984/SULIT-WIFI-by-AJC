@@ -13,7 +13,7 @@ const MemoryChipIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
         <path
             strokeLinecap="round"
             strokeLinejoin="round"
-            d="M15.75 5.25a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9a3 3 0 013-3h9z"
+            d="M15.75 5.25a3 3 0 013 3v9a3 3 0 01-3-3h-9a3 3 0 01-3-3v-9a3 3 0 013-3h9z"
         />
         <path
             strokeLinecap="round"
