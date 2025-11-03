@@ -101,12 +101,23 @@ try {
 // --- PORTAL SERVER (Port 3001) - For local hotspot users       ---
 // =================================================================
 
-// Proxy admin API calls to the admin server
+// Proxy admin API calls to the admin server.
+// This MUST be defined *before* the body parser for proxied routes.
 portalApp.use('/api/admin', createProxyMiddleware({
     target: `http://localhost:${ADMIN_PORT}`,
     changeOrigin: true,
-    pathRewrite: { '^/api/admin': '/api/admin' }, // Keep the prefix
-    proxyTimeout: 60000, // 60-second timeout for slow devices like Orange Pi
+    onProxyReq: (proxyReq, req, res) => {
+        // The portalApp's express.json() middleware consumes the body stream.
+        // We need to re-stream it here for the adminApp to receive it.
+        if (req.body) {
+            const bodyData = JSON.stringify(req.body);
+            // In case the body parser is not configured on the target, we add the headers here
+            proxyReq.setHeader('Content-Type', 'application/json');
+            proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+            // Stream the body
+            proxyReq.write(bodyData);
+        }
+    },
 }));
 
 
