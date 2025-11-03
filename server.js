@@ -524,7 +524,7 @@ app.get('/api/admin/updater/status', authMiddleware, async (req, res) => {
     try {
         await executeSystemCommand('git fetch origin');
         const localCommit = await executeSystemCommand('git rev-parse HEAD');
-        const remoteCommit = await executeSystemCommand('git rev-parse origin/master');
+        const remoteCommit = await executeSystemCommand('git rev-parse origin/main');
         const isUpdateAvailable = localCommit !== remoteCommit;
         const statusText = isUpdateAvailable ? 'A new version is available.' : 'You are on the latest version.';
         
@@ -551,8 +551,8 @@ app.post('/api/admin/updater/update', authMiddleware, (req, res) => {
     // Perform update in the background to avoid a hanging request
     setTimeout(async () => {
         try {
-            console.log('[Updater] 1/4: Pulling latest code from origin/master...');
-            await executeSystemCommand('git pull origin master');
+            console.log('[Updater] 1/4: Pulling latest code from origin/main...');
+            await executeSystemCommand('git pull origin main');
             console.log('[Updater] 2/4: Installing/updating dependencies...');
             await executeSystemCommand('npm install');
             console.log('[Updater] 3/4: Building frontend assets...');
