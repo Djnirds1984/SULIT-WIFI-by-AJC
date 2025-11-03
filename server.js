@@ -1,3 +1,4 @@
+
 // SULIT WIFI Backend Server for Orange Pi One
 // This server handles API requests from the frontend, manages user sessions,
 // validates vouchers, and interacts with the Orange Pi's GPIO pins for a
@@ -15,9 +16,10 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const db = require('./backend/postgres.ts'); // .ts extension is a project legacy, file is JS
+const db = require('./backend/postgres.js');
 
 const promiseExec = util.promisify(exec);
+const projectRoot = __dirname;
 
 // --- Server Setup ---
 const portalApp = express();
@@ -154,8 +156,11 @@ adminRouter.get('/stats', adminAuth, async (req, res) => {
 
 adminRouter.get('/system-info', adminAuth, async (req, res) => {
     const getSysInfo = async () => {
-        // This function remains largely unchanged as it interacts with the OS, not the DB.
         const info = { cpu: { model: 'N/A', cores: 0 }, ram: { totalMb: 0, usedMb: 0 }, disk: { totalMb: 0, usedMb: 0 }};
+        if (!isProd) {
+            console.warn('[Admin] Not in production, returning dummy system info.');
+            return { cpu: { model: 'ARMv7 Processor (Dummy)', cores: 4 }, ram: { totalMb: 512, usedMb: 128 }, disk: { totalMb: 15360, usedMb: 4096 } };
+        }
         try {
             const { stdout: cpuInfo } = await promiseExec(`echo $(nproc) && lscpu | grep "Model name" | sed 's/Model name:[ \\t]*//'`);
             const cpuLines = cpuInfo.trim().split('\n');
@@ -172,10 +177,6 @@ adminRouter.get('/system-info', adminAuth, async (req, res) => {
             const diskParts = diskInfo.trim().split(/\s+/);
             if (diskParts.length === 2) { info.disk.totalMb = parseInt(diskParts[0], 10) || 0; info.disk.usedMb = parseInt(diskParts[1], 10) || 0; }
         } catch (e) { console.warn('[Admin] Could not get Disk info:', e.message); }
-        if (info.cpu.cores === 0 && info.ram.totalMb === 0 && !isProd) {
-            console.warn('[Admin] System commands failed, returning dummy data.');
-            return { cpu: { model: 'ARMv7 Processor (Dummy)', cores: 4 }, ram: { totalMb: 512, usedMb: 128 }, disk: { totalMb: 15360, usedMb: 4096 } };
-        }
         return info;
     };
     try {
@@ -188,17 +189,15 @@ adminRouter.get('/system-info', adminAuth, async (req, res) => {
 });
 
 adminRouter.get('/network-info', adminAuth, async (req, res) => {
-    // This function remains unchanged as it interacts with the OS.
     const parseIpAddr = (stdout) => {
         const blocks = stdout.trim().split(/^\d+:\s/m).slice(1);
-        const result = [];
-        blocks.forEach(block => {
+        return blocks.map(block => {
             const lines = block.trim().split('\n');
             const firstLine = lines[0];
             const nameMatch = firstLine.match(/^([\w\d.-]+):/);
-            if (!nameMatch) return;
+            if (!nameMatch) return null;
             const name = nameMatch[1];
-            if (name === 'lo') return;
+            if (name === 'lo') return null;
             const statusMatch = firstLine.match(/state\s+([A-Z_]+)/);
             const status = statusMatch ? statusMatch[1] : 'UNKNOWN';
             let ip4 = null, ip6 = null;
@@ -206,19 +205,21 @@ adminRouter.get('/network-info', adminAuth, async (req, res) => {
                 const ip4Match = line.match(/inet\s+([\d.]+\/\d+)/); if (ip4Match && !ip4) ip4 = ip4Match[1];
                 const ip6Match = line.match(/inet6\s+([a-f\d:]+\/\d+)/); if (ip6Match && (!ip6Match[1].startsWith('fe80') || !ip6)) ip6 = ip6Match[1];
             });
-            result.push({ name, status, ip4, ip6 });
-        });
-        return result;
+            return { name, status, ip4, ip6 };
+        }).filter(Boolean);
     };
+    if (!isProd) {
+        return res.json([
+            { name: 'eth0 (dummy)', status: 'UP', ip4: '192.168.1.10/24', ip6: 'fe80::a00:27ff:fe4d:5536/64' },
+            { name: 'wlan0 (dummy)', status: 'UP', ip4: '192.168.200.13/24', ip6: null }
+        ]);
+    }
     try {
         const { stdout } = await promiseExec('ip addr');
         res.json(parseIpAddr(stdout));
     } catch (error) {
-        console.warn('[Admin] Could not get network info, returning dummy data.', error.message);
-        res.json([
-            { name: 'eth0', status: 'UP', ip4: '192.168.1.10/24', ip6: 'fe80::a00:27ff:fe4d:5536/64' },
-            { name: 'wlan0', status: 'UP', ip4: '192.168.200.13/24', ip6: null }
-        ]);
+        console.error('[Admin] Could not get network info.', error.message);
+        res.status(500).json({ message: 'Failed to retrieve network interface data.' });
     }
 });
 
@@ -275,13 +276,11 @@ adminRouter.get('/network-config', adminAuth, async (req, res) => {
 
 adminRouter.put('/network-config', adminAuth, async (req, res) => {
     const newNetConfig = req.body;
-    // --- Validation (retained from original logic) ---
     const { wanInterface, hotspotInterface, hotspotIpAddress, hotspotDhcpServer } = newNetConfig;
     if (wanInterface === hotspotInterface) {
         return res.status(400).json({ message: 'CRITICAL ERROR: WAN and Hotspot interfaces cannot be the same.' });
     }
     
-    // --- Save to DB ---
     try {
         const settings = await db.getSettings();
         settings.networkConfiguration = newNetConfig;
@@ -292,10 +291,8 @@ adminRouter.put('/network-config', adminAuth, async (req, res) => {
         return res.status(500).json({ message: "Failed to save network configuration to database." });
     }
     
-    // --- Apply settings to the system (fire-and-forget) ---
     (async () => {
         try {
-            // This logic for applying system changes remains the same.
             const HOTSPOT_INTERFACE_CONF_PATH = isProd ? '/etc/network/interfaces.d/60-sulit-wifi-hotspot' : path.join(__dirname, '60-sulit-wifi-hotspot.mock');
             const interfaceConfig = `auto ${hotspotInterface}\nallow-hotspot ${hotspotInterface}\niface ${hotspotInterface} inet static\n    address ${hotspotIpAddress}\n    netmask 255.255.255.0`;
             if (isProd) await promiseExec(`echo "${interfaceConfig}" | sudo tee ${HOTSPOT_INTERFACE_CONF_PATH}`); else fs.writeFileSync(HOTSPOT_INTERFACE_CONF_PATH, interfaceConfig);
@@ -303,7 +300,7 @@ adminRouter.put('/network-config', adminAuth, async (req, res) => {
             if (hotspotDhcpServer.enabled) {
                 const dnsmasqConfig = `interface=${hotspotInterface}\ndhcp-range=${hotspotDhcpServer.start},${hotspotDhcpServer.end},${hotspotDhcpServer.lease}\ndhcp-option=3,${hotspotIpAddress}\ndhcp-option=6,${hotspotIpAddress}`;
                 fs.writeFileSync(DNSMASQ_HOTSPOT_CONF_PATH, dnsmasqConfig);
-            } else { fs.unlink(DNSMASQ_HOTSPOT_CONF_PATH, ()=>{}); }
+            } else { if(fs.existsSync(DNSMASQ_HOTSPOT_CONF_PATH)) fs.unlinkSync(DNSMASQ_HOTSPOT_CONF_PATH); }
             if (isProd) await promiseExec('sudo systemctl restart dnsmasq');
             const splashContent = await getDefaultSplashContent();
             if (isProd) await promiseExec(`echo '${splashContent}' | sudo tee ${SPLASH_HTML_PATH}`); else fs.writeFileSync(SPLASH_HTML_PATH, splashContent);
@@ -321,31 +318,157 @@ adminRouter.put('/network-config', adminAuth, async (req, res) => {
     res.status(204).send();
 });
 
-// Portal HTML Editor and Updater routes remain largely unchanged as they deal with files, not the database.
-// --- Portal HTML Editor Routes ---
 adminRouter.get('/portal-html', adminAuth, async (req, res) => {
     try {
         const content = await fs.promises.readFile(SPLASH_HTML_PATH, 'utf-8');
         res.json({ html: content });
     } catch (error) { res.status(500).json({ message: 'Could not read portal HTML file.' }); }
 });
-adminRouter.put('/portal-html', adminAuth, async (req, res) => { /* ... unchanged ... */ });
-adminRouter.post('/portal-html/reset', adminAuth, async (req, res) => { /* ... unchanged ... */});
 
-// --- Updater & Backup Routes ---
-// These file-based operations are unchanged.
+adminRouter.put('/portal-html', adminAuth, async (req, res) => {
+    const { html } = req.body;
+    if (typeof html !== 'string') {
+        return res.status(400).json({ message: 'HTML content must be a string.' });
+    }
+    try {
+        if (isProd) {
+            const escapedHtml = html.replace(/'/g, "'\\''");
+            await promiseExec(`echo '${escapedHtml}' | sudo tee ${SPLASH_HTML_PATH}`);
+        } else {
+            await fs.promises.writeFile(SPLASH_HTML_PATH, html);
+        }
+        res.status(204).send();
+    } catch (error) {
+        console.error('[Admin] Error updating portal HTML:', error);
+        res.status(500).json({ message: 'Could not write to portal HTML file.' });
+    }
+});
+
+adminRouter.post('/portal-html/reset', adminAuth, async (req, res) => {
+    try {
+        const defaultHtml = await getDefaultSplashContent();
+        if (isProd) {
+            const escapedHtml = defaultHtml.replace(/'/g, "'\\''");
+            await promiseExec(`echo '${escapedHtml}' | sudo tee ${SPLASH_HTML_PATH}`);
+        } else {
+            await fs.promises.writeFile(SPLASH_HTML_PATH, defaultHtml);
+        }
+        res.json({ html: defaultHtml });
+    } catch (error) {
+        console.error('[Admin] Error resetting portal HTML:', error);
+        res.status(500).json({ message: 'Could not reset portal HTML file.' });
+    }
+});
+
 const BACKUP_DIR = path.join(os.homedir(), 'sulit-wifi-backups');
 if (!fs.existsSync(BACKUP_DIR)) { fs.mkdirSync(BACKUP_DIR, { recursive: true }); }
-const getLatestBackup = () => { /* ... unchanged ... */ };
-const createBackupProcess = async () => { /* ... unchanged ... */ };
-const gitExec = async (command) => { /* ... unchanged ... */ };
-adminRouter.get('/updater/status', adminAuth, async (req, res) => { /* ... unchanged ... */ });
-adminRouter.post('/updater/update', adminAuth, (req, res) => { /* ... unchanged ... */ });
-adminRouter.post('/updater/backup', adminAuth, async (req, res) => { /* ... unchanged ... */ });
-adminRouter.post('/updater/restore', adminAuth, (req, res) => { /* ... unchanged ... */ });
-adminRouter.delete('/updater/backup', adminAuth, (req, res) => { /* ... unchanged ... */ });
 
-// --- Configure Admin App Middleware ---
+const getLatestBackup = () => {
+    if (!fs.existsSync(BACKUP_DIR)) return null;
+    const files = fs.readdirSync(BACKUP_DIR)
+        .filter(f => f.endsWith('.tar.gz'))
+        .map(f => ({ name: f, stat: fs.statSync(path.join(BACKUP_DIR, f)) }))
+        .sort((a, b) => b.stat.mtime.getTime() - a.stat.mtime.getTime());
+    return files.length > 0 ? files[0] : null;
+};
+
+const createBackupProcess = async () => {
+    const backupFile = `sulit-wifi-backup-${new Date().toISOString().replace(/:/g, '-')}.tar.gz`;
+    const backupPath = path.join(BACKUP_DIR, backupFile);
+    const command = `tar --exclude='./node_modules' --exclude='./.git' --exclude='${BACKUP_DIR}' -czf ${backupPath} .`;
+    await promiseExec(command, { cwd: projectRoot });
+    return { backupFile, backupPath };
+};
+
+const gitExec = (command) => promiseExec(command, { cwd: projectRoot });
+
+adminRouter.get('/updater/status', adminAuth, async (req, res) => {
+    try {
+        await gitExec('git fetch');
+        const { stdout: local } = await gitExec('git rev-parse HEAD');
+        const { stdout: remote } = await gitExec('git rev-parse @{u}');
+        const { stdout: message } = await gitExec('git log -1 --pretty=%B @{u}');
+
+        const latestBackup = getLatestBackup();
+        const status = {
+            localCommit: local.trim().slice(0, 7),
+            remoteCommit: remote.trim().slice(0, 7),
+            commitMessage: message.trim(),
+            isUpdateAvailable: local.trim() !== remote.trim(),
+            statusText: local.trim() !== remote.trim() ? 'A new update is available.' : 'Your application is up-to-date.',
+            backupFile: latestBackup ? latestBackup.name : undefined,
+            backupDate: latestBackup ? latestBackup.stat.mtime.toISOString() : undefined,
+        };
+        res.json(status);
+    } catch (error) {
+        console.error('[Admin] Updater status check failed:', error);
+        res.status(500).json({ message: 'Failed to check for updates. Ensure git is configured correctly.' });
+    }
+});
+
+adminRouter.post('/updater/update', adminAuth, async (req, res) => {
+    res.status(202).json({ message: 'Update process started. The server will restart shortly.' });
+    (async () => {
+        try {
+            console.log('[Updater] Starting safe update process...');
+            await createBackupProcess();
+            console.log('[Updater] Backup created. Pulling latest changes...');
+            await gitExec('git pull');
+            console.log('[Updater] Changes pulled. Installing dependencies...');
+            await promiseExec('npm install');
+            console.log('[Updater] Dependencies installed. Restarting application via PM2...');
+            await promiseExec('pm2 restart sulit-wifi');
+        } catch (error) {
+            console.error('[Updater] FATAL: Update process failed.', error);
+        }
+    })();
+});
+
+adminRouter.post('/updater/backup', adminAuth, async (req, res) => {
+    try {
+        const { backupFile } = await createBackupProcess();
+        res.json({ message: `Backup created successfully: ${backupFile}` });
+    } catch (error) {
+        console.error('[Admin] Backup creation failed:', error);
+        res.status(500).json({ message: 'Failed to create backup.' });
+    }
+});
+
+adminRouter.post('/updater/restore', adminAuth, (req, res) => {
+    res.status(202).json({ message: 'Restore process started. The server will restart shortly.' });
+    (async () => {
+        try {
+            console.log('[Updater] Starting restore from backup...');
+            const latestBackup = getLatestBackup();
+            if (!latestBackup) throw new Error('No backup file found to restore from.');
+            const backupPath = path.join(BACKUP_DIR, latestBackup.name);
+            console.log(`[Updater] Restoring from ${backupPath}`);
+            await promiseExec(`tar -xzf ${backupPath} -C ${projectRoot}`);
+            console.log('[Updater] Files restored. Installing dependencies...');
+            await promiseExec('npm install');
+            console.log('[Updater] Dependencies installed. Restarting application via PM2...');
+            await promiseExec('pm2 restart sulit-wifi');
+        } catch (error) {
+            console.error('[Updater] FATAL: Restore process failed.', error);
+        }
+    })();
+});
+
+adminRouter.delete('/updater/backup', adminAuth, (req, res) => {
+    try {
+        const latestBackup = getLatestBackup();
+        if (latestBackup) {
+            fs.unlinkSync(path.join(BACKUP_DIR, latestBackup.name));
+            res.json({ message: `Backup ${latestBackup.name} deleted.` });
+        } else {
+            res.status(404).json({ message: 'No backup file to delete.' });
+        }
+    } catch (error) {
+        console.error('[Admin] Could not delete backup:', error);
+        res.status(500).json({ message: 'Failed to delete backup file.' });
+    }
+});
+
 adminApp.use(cors()); adminApp.use(bodyParser.json());
 adminApp.use('/api/admin', adminRouter);
 adminApp.use(express.static(path.join(__dirname)));
@@ -388,7 +511,18 @@ portalApp.post('/api/sessions/coin', async (req, res) => {
     if (!clientMac) return res.status(400).json({ message: 'MAC address is required.' });
     if (!coinSlotPin) return res.status(503).json({ message: 'Coin slot hardware is not available.' });
 
-    const handleCoinDrop = async (err) => {
+    let watcher;
+    const cleanup = () => {
+        clearTimeout(timeout);
+        if (watcher) coinSlotPin.unwatch(watcher);
+    };
+
+    const timeout = setTimeout(() => {
+        if (!res.headersSent) res.status(408).json({ message: 'Request timed out. No coin inserted.' });
+        cleanup();
+    }, 30000);
+    
+    watcher = async (err) => {
         if (err) { console.error('[Portal] GPIO error:', err); return; }
         console.log(`[Portal] Coin detected for MAC: ${clientMac}!`);
         const duration = 900; // 15 minutes
@@ -398,12 +532,8 @@ portalApp.post('/api/sessions/coin', async (req, res) => {
         if (!res.headersSent) res.status(201).json(session);
         cleanup();
     };
-    const timeout = setTimeout(() => {
-        if (!res.headersSent) res.status(408).json({ message: 'Request timed out. No coin inserted.' });
-        cleanup();
-    }, 30000);
-    const cleanup = () => { clearTimeout(timeout); coinSlotPin.unwatch(handleCoinDrop); };
-    coinSlotPin.watch(handleCoinDrop);
+
+    coinSlotPin.watch(watcher);
 });
 
 portalApp.get('/api/sessions/current', async (req, res) => {
@@ -439,7 +569,6 @@ portalApp.delete('/api/sessions/current', async (req, res) => {
     res.status(204).send();
 });
 
-portalApp.use('/api/admin', adminRouter);
 portalApp.use(express.static(path.join(__dirname)));
 portalApp.use(express.static(path.join(__dirname, 'dist')));
 portalApp.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
