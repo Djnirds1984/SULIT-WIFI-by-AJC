@@ -143,9 +143,9 @@ The application requires a PostgreSQL database to store all persistent data.
 
 We use Nginx as a reverse proxy and `nodogsplash` as the captive portal software.
 
-### 1. Install Nginx and Nodogsplash
+### 1. Install Nginx, Nodogsplash, and Network Tools
 ```bash
-sudo apt-get install -y nginx nodogsplash
+sudo apt-get install -y nginx nodogsplash ifupdown
 ```
 
 ### 2. Configure Nginx (Simplified)
