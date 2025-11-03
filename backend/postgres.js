@@ -103,8 +103,8 @@ const seedInitialData = async () => {
             hotspotIpAddress: '192.168.200.13',
             hotspotDhcpServer: {
                 enabled: true,
-                start: '199.168.200.100',
-                end: '199.168.200.200',
+                start: '192.168.200.100',
+                end: '192.168.200.200',
                 lease: '12h',
             },
         },
@@ -121,6 +121,21 @@ const seedInitialData = async () => {
 // --- Module Exports (Database API) ---
 module.exports = {
     initializeDatabase,
+    checkConnection: async () => {
+        let client;
+        try {
+            client = await pool.connect();
+            await client.query('SELECT NOW()'); // Simple query to check connection
+            return true;
+        } catch (error) {
+            // Rethrow the specific error for handling upstream
+            throw error;
+        } finally {
+            if (client) {
+                client.release();
+            }
+        }
+    },
     query,
 
     // --- Admin & Auth ---

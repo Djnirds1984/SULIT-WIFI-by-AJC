@@ -575,15 +575,32 @@ portalApp.get('*', (req, res) => res.sendFile(path.join(__dirname, 'index.html')
 
 // --- Start Both Servers ---
 const startServer = async () => {
-    await db.initializeDatabase();
-    
-    portalApp.listen(PORTAL_PORT, () => {
-      console.log(`SULIT WIFI Portal Server is running on http://localhost:${PORTAL_PORT}`);
-    });
+    try {
+        // First, check the database connection explicitly
+        await db.checkConnection();
+        console.log('[DB] Database connection successful.');
+        
+        // Then initialize the schema
+        await db.initializeDatabase();
+        
+        portalApp.listen(PORTAL_PORT, () => {
+          console.log(`SULIT WIFI Portal Server is running on http://localhost:${PORTAL_PORT}`);
+        });
 
-    adminApp.listen(ADMIN_PORT, () => {
-        console.log(`SULIT WIFI Admin Server is running on http://localhost:${ADMIN_PORT}`);
-    });
+        adminApp.listen(ADMIN_PORT, () => {
+            console.log(`SULIT WIFI Admin Server is running on http://localhost:${ADMIN_PORT}`);
+        });
+    } catch (error) {
+        if (error.code === '28P01') { // PostgreSQL password authentication error code
+            console.error('\n================================================================');
+            console.error('[DB] FATAL: Database password authentication failed for user "sulituser".');
+            console.error('Please check that the PGPASSWORD in your .env file is correct.');
+            console.error('================================================================\n');
+        } else {
+            console.error('[SERVER] FATAL: Could not start server. An unexpected error occurred.', error);
+        }
+        process.exit(1); // Exit with an error code
+    }
 };
 
 startServer();
