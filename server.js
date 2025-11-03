@@ -215,6 +215,7 @@ adminRouter.get('/stats', async (req, res) => {
             totalVouchersAvailable: available
         });
     } catch (error) {
+        console.error("[API /stats] Failed to fetch dashboard stats:", error);
         res.status(500).json({ message: 'Failed to get stats.' });
     }
 });
@@ -326,6 +327,11 @@ adminRouter.put('/network-config', async (req, res) => {
         
         const { hotspotInterface, hotspotIpAddress } = config;
         const configFilePath = `/etc/network/interfaces.d/60-sulit-wifi-hotspot`;
+        const configDirPath = path.dirname(configFilePath);
+
+        // FIX: Ensure the configuration directory exists before writing to it.
+        fs.mkdirSync(configDirPath, { recursive: true });
+
         const interfaceConfig = `
 auto ${hotspotInterface}
 iface ${hotspotInterface} inet static

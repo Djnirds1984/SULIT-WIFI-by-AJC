@@ -8,6 +8,10 @@ const pool = new Pool({
   database: process.env.PGDATABASE,
   password: process.env.PGPASSWORD,
   port: process.env.PGPORT,
+  // FIX: Add timeouts to make the connection pool more resilient.
+  // This prevents errors from stale connections, especially for the dashboard.
+  idleTimeoutMillis: 10000, // Close idle clients after 10 seconds.
+  connectionTimeoutMillis: 5000, // Return an error if connection takes > 5 seconds.
 });
 
 // A helper function to execute queries
