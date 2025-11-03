@@ -7,12 +7,13 @@ This guide provides step-by-step instructions for deploying the SULIT WIFI hotsp
 1.  [Project Overview](#project-overview)
 2.  [Hardware & Software Prerequisites](#hardware--software-prerequisites)
 3.  [Step 1: Orange Pi One Setup](#step-1-orange-pi-one-setup)
-4.  [Step 2: Backend & Frontend Setup](#step-2-backend--frontend-setup)
-5.  [Step 3: GPIO Coin Slot Integration](#step-3-gpio-coin-slot-integration)
-6.  [Step 4: Nginx & Captive Portal Configuration](#step-4-nginx--captive-portal-configuration)
-7.  [Step 5: Running the Application](#step-5-running-the-application)
-8.  [Step 6: Admin Panel WAN Access](#step-6-admin-panel-wan-access)
-9.  [Troubleshooting](#troubleshooting)
+4.  [Step 2: PostgreSQL Database Setup](#step-2-postgresql-database-setup)
+5.  [Step 3: Backend & Frontend Setup](#step-3-backend--frontend-setup)
+6.  [Step 4: GPIO Coin Slot Integration](#step-4-gpio-coin-slot-integration)
+7.  [Step 5: Nginx & Captive Portal Configuration](#step-5-nginx--captive-portal-configuration)
+8.  [Step 6: Running the Application](#step-6-running-the-application)
+9.  [Step 7: Admin Panel WAN Access](#step-7-admin-panel-wan-access)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -23,6 +24,7 @@ This application creates a captive portal for a Wi-Fi hotspot. It features a uni
 - **Portal Server (Port 3001)**: Handles all user-facing interactions for the local Wi-Fi network. This includes the voucher/coin login page, session management, and hardware integration. It is designed to be private and only accessible to clients connected to the hotspot.
 - **Admin Server (Port 3002)**: A separate, dedicated server for the admin panel. This allows for secure remote management of the hotspot (dashboard, voucher generation, settings) over the WAN, without exposing the user portal to the internet.
 - **Frontend**: A single React application that is compiled into a static JavaScript bundle for performance and reliability. It communicates with the appropriate backend server depending on whether it's rendering the user portal or the admin panel.
+- **Database**: A persistent PostgreSQL database stores all vouchers, sessions, and system settings, ensuring data is safe across reboots.
 
 ## Hardware & Software Prerequisites
 
@@ -61,21 +63,68 @@ This application creates a captive portal for a Wi-Fi hotspot. It features a uni
 
 ---
 
-## Step 2: Backend & Frontend Setup
+## Step 2: PostgreSQL Database Setup
+
+The application requires a PostgreSQL database to store all persistent data.
+
+1.  **Install PostgreSQL**:
+    ```bash
+    sudo apt-get install -y postgresql postgresql-contrib
+    ```
+
+2.  **Create Database and User**:
+    *   Switch to the `postgres` user to access the database administrative shell:
+        ```bash
+        sudo -u postgres psql
+        ```
+    *   Inside the `psql` shell, run the following SQL commands one by one:
+        ```sql
+        -- Create a new database named 'sulitwifi'
+        CREATE DATABASE sulitwifi;
+
+        -- Create a new user with a secure password (replace 'your_secure_password'!)
+        CREATE USER sulituser WITH PASSWORD 'your_secure_password';
+
+        -- Grant all permissions for the new database to the new user
+        GRANT ALL PRIVILEGES ON DATABASE sulitwifi TO sulituser;
+
+        -- Exit the psql shell
+        \q
+        ```
+
+---
+
+## Step 3: Backend & Frontend Setup
 
 1.  **Clone the Repository**:
     ```bash
     git clone https://github.com/Djnirds1984/SULIT-WIFI-by-AJC.git sulit-wifi-portal
     cd sulit-wifi-portal
     ```
-2.  **Install Dependencies**: This command installs all required Node.js packages for the entire project, including the backend (Express, onoff), frontend (React, esbuild), and the Google Gemini SDK.
+2.  **Configure Database Connection**:
+    *   Create a `.env` file in the project root to store your database credentials. This keeps them secure and out of the source code.
+        ```bash
+        nano .env
+        ```
+    *   Add the following lines to the `.env` file, replacing the values with the ones you just created.
+        ```
+        # PostgreSQL Connection Details
+        PGHOST=localhost
+        PGUSER=sulituser
+        PGPASSWORD=your_secure_password
+        PGDATABASE=sulitwifi
+        PGPORT=5432
+        ```
+    *   Press `CTRL+X`, then `Y`, then `Enter` to save and exit.
+
+3.  **Install Dependencies**: This command installs all required Node.js packages, including the PostgreSQL client and password hashing libraries.
     ```bash
     npm install
     ```
 
 ---
 
-## Step 3: GPIO Coin Slot Integration
+## Step 4: GPIO Coin Slot Integration
 
 1.  **Physical Connection**:
     *   Connect the coin acceptor's **GND** to a Ground pin on the Orange Pi.
@@ -90,7 +139,7 @@ This application creates a captive portal for a Wi-Fi hotspot. It features a uni
 
 ---
 
-## Step 4: Nginx & Captive Portal Configuration
+## Step 5: Nginx & Captive Portal Configuration
 
 We use Nginx as a reverse proxy for both servers and `nodogsplash` as the captive portal software. This setup isolates traffic: the portal is only visible on the local Wi-Fi network, while the admin panel is visible on the WAN.
 
@@ -103,7 +152,7 @@ sudo apt-get install -y nginx nodogsplash
 Nginx will route traffic based on the IP address it's accessed from.
 
 *   **Create Nginx config file**: `sudo nano /etc/nginx/sites-available/sulit-wifi-portal`
-*   **Paste the following configuration**, replacing `192.168.200.13` with your Pi's LAN IP address.
+*   **Paste the following configuration**, replacing `192.168.200.13` with your Pi's LAN IP address (the one you will set in the admin panel).
     ```nginx
     # Server block for the User Portal (Captive Portal)
     # Listens ONLY on the local network interface.
@@ -145,25 +194,10 @@ Nginx will route traffic based on the IP address it's accessed from.
 *   **Test and restart Nginx**: `sudo nginx -t` followed by `sudo systemctl restart nginx`.
 
 ### 3. Configure Nodogsplash
-Redirect captive portal clients to the Nginx proxy on the LAN IP.
+Redirect captive portal clients to the Nginx proxy on the LAN IP. The server will now manage the `splash.html` file automatically based on your network settings. You only need to set the gateway interface.
 
 *   **Edit config**: `sudo nano /etc/nodogsplash/nodogsplash.conf`
     *   Set `GatewayInterface wlan0` (or your Wi-Fi adapter's name).
-*   **Edit splash page for redirection**: `sudo nano /etc/nodogsplash/htdocs/splash.html`
-    *   Replace the **entire file** with this, replacing `<ORANGE_PI_IP_ADDRESS>` with the Pi's LAN IP.
-    ```html
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8" />
-        <meta http-equiv="refresh" content="0; url=http://<ORANGE_PI_IP_ADDRESS>/?mac=$mac&ip=$ip&gw_id=$gw_id" />
-        <title>Connecting...</title>
-    </head>
-    <body>
-        <p>Please wait, you are being redirected...</p>
-    </body>
-    </html>
-    ```
 *   **Enable passwordless `ndsctl` access**: The server needs to manage users.
     *   Run `sudo visudo`.
     *   Add this line at the bottom, replacing `<your-username>`:
@@ -171,13 +205,13 @@ Redirect captive portal clients to the Nginx proxy on the LAN IP.
 
 ---
 
-## Step 5: Running the Application
+## Step 6: Running the Application
 
 1.  **Set Gemini API Key (Optional)**: For the Wi-Fi name generator.
-    ```bash
-    export API_KEY="your_gemini_api_key_here"
-    # Add this to ~/.bashrc or ~/.profile to make it permanent
-    ```
+    *   Edit your `.env` file (`nano .env`) and add this line:
+        ```
+        API_KEY="your_gemini_api_key_here"
+        ```
 2.  **Start the Backend with PM2**:
     *   Install PM2: `sudo npm install pm2 -g`
     *   **Start the server**:
@@ -204,7 +238,7 @@ Redirect captive portal clients to the Nginx proxy on the LAN IP.
 
 ---
 
-## Step 6: Admin Panel WAN Access
+## Step 7: Admin Panel WAN Access
 
 The Admin Server is proxied by Nginx on port `80`. To access it from outside your local hotspot network (e.g., from your main home network or the internet), you need to allow HTTP traffic through the firewall.
 
@@ -251,3 +285,6 @@ This means another process is already using one of the required ports.
     cd ~/sulit-wifi-portal
     pm2 restart sulit-wifi
     ```
+
+### Error: `error: password authentication failed for user "sulituser"`
+This error in the PM2 logs means the database password in your `.env` file is incorrect. Double-check it against the password you set in Step 2.
