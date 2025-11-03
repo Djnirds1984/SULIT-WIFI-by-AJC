@@ -1,27 +1,25 @@
-// FIX: Add declarations for Node.js globals to resolve TypeScript errors.
-// This is necessary when the @types/node package is not available or configured.
-declare var require: any;
-declare var process: any;
-declare var module: any;
-
 // SULIT WIFI - PostgreSQL Database Module
 // NOTE: This file has a .ts extension but contains JavaScript for compatibility
 // with the existing Node.js server setup.
 
-const { Pool } = require('pg');
-const bcrypt = require('bcrypt');
+// FIX: Changed require to import to resolve 'Cannot find name require' error and to follow TypeScript module conventions.
+import { Pool, Client } from 'pg';
+// FIX: Changed require to import to resolve 'Cannot find name require' error and to follow TypeScript module conventions.
+import * as bcrypt from 'bcrypt';
+// FIX: Imported process to resolve 'Property 'exit' does not exist on type 'Process'' error.
+import process from 'process';
 
 // The connection pool will automatically use environment variables
 // (PGUSER, PGHOST, PGDATABASE, PGPASSWORD, PGPORT)
 const pool = new Pool();
 
-pool.on('error', (err, client) => {
+pool.on('error', (err: Error, client: Client) => {
     console.error('Unexpected error on idle PostgreSQL client', err);
     process.exit(-1);
 });
 
 // Generic query function for logging and execution
-const query = async (text, params) => {
+const query = async (text: string, params: any[]) => {
     const start = Date.now();
     try {
         const res = await pool.query(text, params);
@@ -125,7 +123,8 @@ const seedInitialData = async () => {
 
 
 // --- Module Exports (Database API) ---
-module.exports = {
+// FIX: Changed module.exports to 'export =' to resolve 'Cannot find name 'module'' error and use TypeScript syntax for exporting CommonJS modules.
+export = {
     initializeDatabase,
     query,
 
@@ -134,27 +133,27 @@ module.exports = {
         const res = await query('SELECT * FROM admin WHERE username = $1', ['admin']);
         return res.rows[0];
     },
-    updateAdminToken: async (token) => {
+    updateAdminToken: async (token: string | null) => {
         await query('UPDATE admin SET session_token = $1 WHERE username = $2', [token, 'admin']);
     },
     
     // --- Sessions ---
-    getSession: async (macAddress) => {
+    getSession: async (macAddress: string) => {
         const res = await query('SELECT * FROM sessions WHERE mac_address = $1', [macAddress]);
         return res.rows[0];
     },
-    createSession: async (macAddress, voucherCode, durationSeconds) => {
+    createSession: async (macAddress: string, voucherCode: string, durationSeconds: number) => {
         await query(
             'INSERT INTO sessions (mac_address, voucher_code, start_time, duration_seconds) VALUES ($1, $2, NOW(), $3)',
             [macAddress, voucherCode, durationSeconds]
         );
     },
-    deleteSession: async (macAddress) => {
+    deleteSession: async (macAddress: string) => {
         await query('DELETE FROM sessions WHERE mac_address = $1', [macAddress]);
     },
 
     // --- Vouchers ---
-    getVoucherByCode: async (code) => {
+    getVoucherByCode: async (code: string) => {
         const res = await query('SELECT code, duration_seconds, is_used FROM vouchers WHERE code = $1', [code]);
         return res.rows[0];
     },
@@ -162,10 +161,10 @@ module.exports = {
         const res = await query('SELECT code, duration_seconds as duration, is_used as used FROM vouchers ORDER BY created_at DESC', []);
         return res.rows;
     },
-    useVoucher: async (code) => {
+    useVoucher: async (code: string) => {
         await query('UPDATE vouchers SET is_used = TRUE WHERE code = $1', [code]);
     },
-    createNewVoucher: async (code, duration) => {
+    createNewVoucher: async (code: string, duration: number) => {
         const res = await query(
             'INSERT INTO vouchers (code, duration_seconds) VALUES ($1, $2) RETURNING *',
             [code, duration]
@@ -201,7 +200,7 @@ module.exports = {
         }
         return res.rows[0].value;
     },
-    updateSettings: async (settings) => {
+    updateSettings: async (settings: any) => {
         await query(
             "INSERT INTO settings (key, value) VALUES ('app_settings', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
             [JSON.stringify(settings)]
