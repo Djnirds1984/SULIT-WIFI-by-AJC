@@ -21,8 +21,8 @@ This guide provides step-by-step instructions for deploying the SULIT WIFI hotsp
 
 This application creates a captive portal for a Wi-Fi hotspot, running on a single, efficient Node.js server.
 
-- **Unified Server (Port 3001)**: A single, robust Express.js application handles all user-facing interactions (voucher/coin login), secure admin panel APIs (dashboard, settings), and hardware integration. This simplified architecture removes complexity and improves reliability.
-- **Frontend**: A single React application compiled into a static JavaScript bundle for performance. It intelligently communicates with the backend, rendering either the user portal or the admin panel based on the URL.
+- **API Server (Port 3001)**: A robust Express.js application serves as a dedicated API backend. It handles all user authentication (voucher/coin), secure admin panel endpoints (dashboard, settings), and hardware integration.
+- **Frontend**: A modern React application compiled into a static JavaScript bundle. It is served directly by Nginx for maximum performance and reliability.
 - **Database**: A persistent PostgreSQL database stores all vouchers, sessions, and system settings, ensuring data is safe across reboots.
 
 ## Hardware & Software Prerequisites
@@ -133,7 +133,7 @@ The application requires a PostgreSQL database to store all persistent data.
 
 2.  **Permissions**: Add your user to the `gpio` group and reboot.
     ```bash
-    sudo usod -aG gpio <your-username>
+    sudo usermod -aG gpio <your-username>
     sudo reboot
     ```
 
@@ -148,28 +148,30 @@ We use Nginx as a reverse proxy and `nodogsplash` as the captive portal software
 sudo apt-get install -y nginx nodogsplash ifupdown
 ```
 
-### 2. Configure Nginx (Robust)
-Nginx will act as the web server for the portal's user interface and as a reverse proxy for the backend API. This setup is more robust, as it allows the portal interface to load even if the backend server is temporarily down, preventing "502 Bad Gateway" errors.
+### 2. Configure Nginx (Robust Setup)
+This setup is designed for maximum reliability. Nginx, a high-performance web server, will directly serve your portal's user interface. The Node.js application will run as a dedicated API server.
+
+**Why this is important:** If the Node.js server has a problem (e.g., a database connection issue) and fails to start, users will **still see the portal's login page** instead of a "502 Bad Gateway" error. The portal will then show a specific "cannot connect" message, which is a much better user experience and easier to troubleshoot.
 
 *   **Create Nginx config file**: `sudo nano /etc/nginx/sites-available/sulit-wifi-portal`
 *   **Paste the following configuration**:
-
-    *Make sure to replace `/home/pi/sulit-wifi-portal/public` with the **absolute path** to your project's `public` directory.*
 
     ```nginx
     server {
         listen 80 default_server;
         listen [::]:80 default_server;
 
-        # --- IMPORTANT ---
-        # Replace this with the ABSOLUTE path to your project's 'public' folder.
-        # Example for a user named 'pi': root /home/pi/sulit-wifi-portal/public;
-        root /home/pi/sulit-wifi-portal/public;
+        # --- ⬇️ CRITICAL: UPDATE THIS PATH ⬇️ ---
+        # Replace with the ABSOLUTE path to your project's 'public' directory.
+        # Example for user 'pi': root /home/pi/sulit-wifi-portal/public;
+        # Example for user 'admin': root /home/admin/sulit-wifi-portal/public;
+        root /home/YOUR_USERNAME/sulit-wifi-portal/public;
+        # --- ⬆️ CRITICAL: UPDATE THIS PATH ⬆️ ---
 
         index index.html;
 
-        # API requests are proxied to the Node.js backend server
-        location /api {
+        # All requests starting with /api/ are proxied to the Node.js backend server
+        location /api/ {
             proxy_pass http://localhost:3001;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
@@ -178,8 +180,8 @@ Nginx will act as the web server for the portal's user interface and as a revers
             proxy_cache_bypass $http_upgrade;
         }
 
-        # All other requests are part of the Single Page App (SPA).
-        # This serves the main index.html file, allowing React Router to handle routes like /admin.
+        # All other requests are for the frontend Single Page App (SPA).
+        # This serves the main index.html file, allowing the React app to handle all routes like /admin.
         location / {
             try_files $uri $uri/ /index.html;
         }
@@ -216,7 +218,7 @@ Redirect captive portal clients to the portal's static IP address (which you wil
     *   **Start the server**:
         ```bash
         cd ~/sulit-wifi-portal
-        # This command builds the frontend then starts the unified server.
+        # This command builds the frontend then starts the API server.
         pm2 start npm --name "sulit-wifi" -- start
         ```
     *   **Manage with PM2**:
@@ -234,7 +236,7 @@ Redirect captive portal clients to the portal's static IP address (which you wil
 
 ## Step 7: Admin Panel WAN Access
 
-With the simplified Nginx config, the admin panel is accessible on port `80` from any network connected to the Orange Pi.
+With the Nginx configuration, the admin panel is accessible on port `80` from any network connected to the Orange Pi.
 
 1.  **Configure Firewall (UFW)**: If you use `ufw` (Uncomplicated Firewall) on Armbian:
     ```bash
@@ -258,3 +260,9 @@ The password in your `.env` file is incorrect. Double-check it. If forgotten, re
 
 ### Error: `error: permission denied for schema public`
 The `sulituser` does not have ownership of the database. Fix this in `psql` with: `ALTER DATABASE sulitwifi OWNER TO sulituser;` then restart the app.
+
+### Portal shows "502 Bad Gateway"
+This means Nginx is running but the backend Node.js server is not. Check the application logs (`pm2 logs sulit-wifi`) for startup errors, which are most often caused by incorrect database credentials in the `.env` file.
+
+### Portal shows a blank page or 404 Not Found
+This means your Nginx configuration is incorrect. Double-check that the `root` path in `/etc/nginx/sites-available/sulit-wifi-portal` is the correct **absolute path** to your project's `public` folder. After fixing it, run `sudo nginx -t` and `sudo systemctl restart nginx`.

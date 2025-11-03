@@ -578,16 +578,6 @@ app.put('/api/admin/portal-html', authMiddleware, (req, res) => res.json({ messa
 app.post('/api/admin/portal-html/reset', authMiddleware, (req, res) => res.json({ html: `<h1>SULIT WIFI Portal</h1><p>Placeholder</p>` }));
 
 
-// --- Static File Serving & SPA Fallback ---
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath));
-
-// For any route not matched by API or static files, serve the SPA
-app.get('*', (req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
-});
-
-
 // --- Server Startup ---
 const startServer = async () => {
     try {
@@ -604,7 +594,7 @@ const startServer = async () => {
         console.log(`[Server] Backup directory is ready at ${BACKUP_DIR}`);
 
         app.listen(PORT, '0.0.0.0', () => {
-            console.log(`[Server] SULIT WIFI Portal listening on http://0.0.0.0:${PORT}`);
+            console.log(`[Server] SULIT WIFI API Server listening on http://0.0.0.0:${PORT}`);
         });
 
     } catch (error) {
