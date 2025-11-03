@@ -106,6 +106,7 @@ portalApp.use('/api/admin', createProxyMiddleware({
     target: `http://localhost:${ADMIN_PORT}`,
     changeOrigin: true,
     pathRewrite: { '^/api/admin': '/api/admin' }, // Keep the prefix
+    proxyTimeout: 60000, // 60-second timeout for slow devices like Orange Pi
 }));
 
 
