@@ -1,13 +1,15 @@
+// FIX: Add declarations for Node.js globals to resolve TypeScript errors.
+// This is necessary when the @types/node package is not available or configured.
+declare var require: any;
+declare var process: any;
+declare var module: any;
+
 // SULIT WIFI - PostgreSQL Database Module
 // NOTE: This file has a .ts extension but contains JavaScript for compatibility
 // with the existing Node.js server setup.
 
-// FIX: Replaced require with import for TypeScript compatibility.
-import { Pool } from 'pg';
-// FIX: Replaced require with import for TypeScript compatibility.
-import * as bcrypt from 'bcrypt';
-// FIX: Imported exit from process to handle process termination explicitly.
-import { exit } from 'process';
+const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
 
 // The connection pool will automatically use environment variables
 // (PGUSER, PGHOST, PGDATABASE, PGPASSWORD, PGPORT)
@@ -15,8 +17,7 @@ const pool = new Pool();
 
 pool.on('error', (err, client) => {
     console.error('Unexpected error on idle PostgreSQL client', err);
-    // FIX: Used imported exit function instead of process.exit.
-    exit(-1);
+    process.exit(-1);
 });
 
 // Generic query function for logging and execution
@@ -82,8 +83,7 @@ const initializeDatabase = async () => {
 
     } catch (error) {
         console.error('[DB] FATAL: Could not initialize database schema.', error);
-        // FIX: Used imported exit function instead of process.exit.
-        exit(1);
+        process.exit(1);
     }
 };
 
@@ -125,9 +125,7 @@ const seedInitialData = async () => {
 
 
 // --- Module Exports (Database API) ---
-
-// FIX: Replaced module.exports with export = for TypeScript CJS module compatibility.
-export = {
+module.exports = {
     initializeDatabase,
     query,
 
