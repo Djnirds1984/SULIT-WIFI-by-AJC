@@ -1,113 +1,113 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getVouchers, generateNewVoucher } from '../../services/wifiService';
+import React, { useState, useEffect } from 'react';
+import { getVouchers, createVoucher } from '../../services/wifiService';
+import { Voucher } from '../../types';
 import { ClipboardIcon } from '../icons/ClipboardIcon';
-
-interface Voucher {
-    code: string;
-    duration: number;
-}
-
-const DURATION_OPTIONS = [
-    { label: '5 Minutes', value: 300 },
-    { label: '1 Hour', value: 3600 },
-    { label: '3 Hours', value: 10800 },
-    { label: '1 Day', value: 86400 },
-];
 
 const VoucherManager: React.FC = () => {
     const [vouchers, setVouchers] = useState<Voucher[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [duration, setDuration] = useState(60); // Default 1 hour in minutes
     const [isGenerating, setIsGenerating] = useState(false);
-    const [selectedDuration, setSelectedDuration] = useState<number>(DURATION_OPTIONS[0].value);
-    const [generatedCode, setGeneratedCode] = useState<string | null>(null);
-    const [copiedCode, setCopiedCode] = useState<string | null>(null);
+    const [copiedCode, setCopiedCode] = useState('');
+    const [error, setError] = useState('');
 
-    const fetchVouchers = useCallback(async () => {
+    const fetchVouchers = async () => {
         setIsLoading(true);
+        setError('');
         try {
             const data = await getVouchers();
-            setVouchers(data.reverse());
-        } catch (error) {
-            console.error("Failed to fetch vouchers", error);
+            setVouchers(data);
+        } catch (error: any) {
+            console.error(error);
+            setError(error.message || "Could not fetch vouchers.");
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    };
 
     useEffect(() => {
         fetchVouchers();
-    }, [fetchVouchers]);
+    }, []);
 
     const handleGenerate = async () => {
         setIsGenerating(true);
-        setGeneratedCode(null);
+        setError('');
         try {
-            const newCode = await generateNewVoucher(selectedDuration);
-            setGeneratedCode(newCode);
-            await fetchVouchers();
-        } catch (error) {
-            console.error("Failed to generate voucher", error);
+            await createVoucher(duration * 60); // API expects seconds
+            await fetchVouchers(); // Refresh list
+        } catch (error: any) {
+            console.error(error);
+            setError(error.message || "Could not generate voucher.");
         } finally {
             setIsGenerating(false);
         }
     };
-
-    const handleCopy = (code: string) => {
+    
+    const copyToClipboard = (code: string) => {
         navigator.clipboard.writeText(code);
         setCopiedCode(code);
-        setTimeout(() => setCopiedCode(null), 2000);
-    };
-
-    const formatDuration = (seconds: number) => {
-        if (seconds < 3600) return `${seconds / 60} min`;
-        if (seconds < 86400) return `${seconds / 3600} hr`;
-        return `${seconds / 86400} day`;
+        setTimeout(() => setCopiedCode(''), 2000);
     };
 
     return (
-        <div className="space-y-6 animate-fade-in-slow">
-            <div>
-                <h3 className="text-xl font-bold text-indigo-400 mb-2">Generate New Voucher</h3>
-                <div className="flex flex-col sm:flex-row gap-2">
-                    <select
-                        value={selectedDuration}
-                        onChange={(e) => setSelectedDuration(Number(e.target.value))}
-                        className="flex-grow bg-slate-900/50 border-2 border-slate-600 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        aria-label="Select voucher duration"
+        <div className="animate-fade-in space-y-6">
+            <h1 className="text-3xl font-bold text-gray-800">Voucher Manager</h1>
+            
+            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">{error}</div>}
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
+                <h2 className="text-xl font-semibold text-gray-700 mb-4">Generate New Voucher</h2>
+                <div className="flex items-center space-x-4">
+                    <div>
+                        <label htmlFor="duration" className="block text-sm font-medium text-gray-700">Duration (minutes)</label>
+                        <input
+                            type="number"
+                            id="duration"
+                            value={duration}
+                            onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            min="1"
+                        />
+                    </div>
+                    <button
+                        onClick={handleGenerate}
+                        disabled={isGenerating}
+                        className="self-end py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300"
                     >
-                        {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                    </select>
-                    <button onClick={handleGenerate} disabled={isGenerating} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-wait">
                         {isGenerating ? 'Generating...' : 'Generate'}
                     </button>
                 </div>
-                {generatedCode && (
-                    <div className="mt-3 p-3 bg-slate-900 rounded-lg text-center">
-                        <p className="text-sm text-slate-400">New Code:</p>
-                        <p className="font-mono text-lg text-green-400">{generatedCode}</p>
-                    </div>
-                )}
             </div>
 
-            <div>
-                <h3 className="text-xl font-bold text-indigo-400 mb-2">Available Vouchers</h3>
-                {isLoading ? <p className="text-slate-400">Loading vouchers...</p> : (
-                    <div className="max-h-60 overflow-y-auto space-y-2 bg-slate-900/50 p-3 rounded-lg border border-slate-700 relative">
-                        {vouchers.map(({ code, duration }) => (
-                            <div key={code} className="flex justify-between items-center bg-slate-800 p-2 rounded-md">
-                                <p className="font-mono text-sky-300">{code}</p>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded">{formatDuration(duration)}</span>
-                                    <button onClick={() => handleCopy(code)} title="Copy code" className="text-slate-400 hover:text-white">
-                                        <ClipboardIcon className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                         {copiedCode && <p className="text-xs text-green-400 text-center sticky bottom-0 bg-slate-900/80 backdrop-blur-sm py-1 animate-fade-in">Copied to clipboard!</p>}
-                         {vouchers.length === 0 && <p className="text-center text-sm text-slate-500 py-4">No available vouchers found. Generate one above!</p>}
-                    </div>
-                )}
+            <div className="bg-white p-6 rounded-lg shadow-md">
+                 <h2 className="text-xl font-semibold text-gray-700 mb-4">Available Vouchers</h2>
+                 {isLoading ? <p>Loading vouchers...</p> : (
+                     <div className="overflow-x-auto">
+                         <table className="min-w-full divide-y divide-gray-200">
+                             <thead className="bg-gray-50">
+                                 <tr>
+                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                                     <th scope="col" className="relative px-6 py-3"><span className="sr-only">Copy</span></th>
+                                 </tr>
+                             </thead>
+                             <tbody className="bg-white divide-y divide-gray-200">
+                                 {vouchers.map(v => (
+                                     <tr key={v.code}>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">{v.code}</td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{v.duration / 60} minutes</td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                             <button onClick={() => copyToClipboard(v.code)} className="text-indigo-600 hover:text-indigo-900 flex items-center">
+                                                 <ClipboardIcon className="h-5 w-5 mr-1"/>
+                                                 {copiedCode === v.code ? 'Copied!' : 'Copy'}
+                                             </button>
+                                         </td>
+                                     </tr>
+                                 ))}
+                             </tbody>
+                         </table>
+                     </div>
+                 )}
             </div>
         </div>
     );

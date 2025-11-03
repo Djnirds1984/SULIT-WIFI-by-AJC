@@ -1,41 +1,45 @@
 import React, { useState, useEffect } from 'react';
 
 interface TimerProps {
-  initialSeconds: number;
-  onTimeEnd: () => void;
+    initialRemainingTime: number;
+    onExpire: () => void;
 }
 
-const Timer: React.FC<TimerProps> = ({ initialSeconds, onTimeEnd }) => {
-  const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
+const formatTime = (seconds: number): string => {
+    if (seconds < 0) seconds = 0;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return [h, m, s]
+        .map(v => v.toString().padStart(2, '0'))
+        .join(':');
+};
 
-  useEffect(() => {
-    if (secondsLeft <= 0) {
-      onTimeEnd();
-      return;
-    }
+const Timer: React.FC<TimerProps> = ({ initialRemainingTime, onExpire }) => {
+    const [remaining, setRemaining] = useState(initialRemainingTime);
 
-    const intervalId = setInterval(() => {
-      setSecondsLeft((prevSeconds) => prevSeconds - 1);
-    }, 1000);
+    useEffect(() => {
+        setRemaining(initialRemainingTime);
+    }, [initialRemainingTime]);
 
-    return () => clearInterval(intervalId);
-  }, [secondsLeft, onTimeEnd]);
+    useEffect(() => {
+        if (remaining <= 0) {
+            onExpire();
+            return;
+        }
 
-  const formatTime = (totalSeconds: number): string => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+        const interval = setInterval(() => {
+            setRemaining(prev => prev - 1);
+        }, 1000);
 
-    const pad = (num: number) => num.toString().padStart(2, '0');
+        return () => clearInterval(interval);
+    }, [remaining, onExpire]);
 
-    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-  };
-
-  return (
-    <div className="font-mono text-4xl md:text-5xl font-black tracking-tighter text-white">
-      {formatTime(secondsLeft)}
-    </div>
-  );
+    return (
+        <div className="text-4xl font-bold text-center text-gray-800 tracking-wider">
+            {formatTime(remaining)}
+        </div>
+    );
 };
 
 export default Timer;

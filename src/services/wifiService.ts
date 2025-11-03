@@ -1,187 +1,163 @@
-import { WifiSession, AdminDashboardStats, NetworkSettings, Voucher, SystemInfo, NetworkInfo, UpdaterStatus, NetworkConfiguration } from '../types';
+import { PublicSettings, Session, AdminStats, SystemInfo, NetworkInterface, Voucher, NetworkConfig, UpdaterStatus } from '../types';
 
-const apiFetch = async (url: string, options: RequestInit = {}) => {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    ...options.headers,
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ message: 'An unexpected error occurred.' }));
-    throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
-  }
-
-  if (response.status === 204) {
-    return;
-  }
-  
-  return response.json();
+const getMacAddress = (): string | null => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('mac') || params.get('client_mac'); // Some systems use client_mac
 };
 
-const portalApiUrl = (path: string, mac: string): string => {
-  return `${path}?mac=${encodeURIComponent(mac)}`;
+const handleResponse = async (response: Response) => {
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
+        throw new Error(error.message || `An unknown error occurred. Status: ${response.status}`);
+    }
+    if (response.status === 204) {
+        return;
+    }
+    return response.json();
 };
 
-export const activateVoucher = async (code: string, mac: string): Promise<WifiSession> => {
-  return apiFetch(portalApiUrl('/api/sessions/voucher', mac), {
-    method: 'POST',
-    body: JSON.stringify({ code }),
-  });
+const getAuthHeaders = () => {
+    const token = localStorage.getItem('admin_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
-export const activateCoinSession = async (mac: string): Promise<WifiSession> => {
-  return apiFetch(portalApiUrl('/api/sessions/coin', mac), {
-    method: 'POST',
-  });
+// --- Public API ---
+
+export const getPublicSettings = async (): Promise<PublicSettings> => {
+    const response = await fetch('/api/public/settings');
+    return handleResponse(response);
 };
 
-export const checkSession = async (mac: string): Promise<WifiSession | null> => {
-  const url = portalApiUrl('/api/sessions/current', mac);
-  const response = await fetch(url);
-  if (response.ok) return response.json();
-  if (response.status === 404) return null;
-  const errorData = await response.json().catch(() => ({ message: 'Failed to check session.' }));
-  throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
+export const getCurrentSession = async (): Promise<Session | null> => {
+    const mac = getMacAddress();
+    if (!mac) return null; // No MAC, no session
+    const response = await fetch(`/api/sessions/current?mac=${mac}`);
+    if (response.status === 404) {
+        return null;
+    }
+    return handleResponse(response);
 };
 
-export const logout = async (mac: string): Promise<void> => {
-  await apiFetch(portalApiUrl('/api/sessions/current', mac), { method: 'DELETE' });
-};
-
-export const getPublicNetworkSettings = async (): Promise<NetworkSettings> => {
-    return apiFetch('/api/public/settings');
-};
-
-const authenticatedAdminApiFetch = async (url: string, options: RequestInit = {}) => {
-  const token = sessionStorage.getItem('adminToken');
-  if (!token) {
-    window.location.href = '/admin'; // Redirect to login if token is missing
-    throw new Error('Authentication token not found. Please log in again.');
-  }
-  
-  const authHeaders = {
-    ...options.headers,
-    'Authorization': `Bearer ${token}`,
-  };
-
-  return apiFetch(url, { ...options, headers: authHeaders });
-};
-
-export const adminLogin = async (password: string): Promise<{ token: string }> => {
-    const data = await apiFetch('/api/admin/login', {
+export const activateVoucher = async (code: string): Promise<Session> => {
+    const mac = getMacAddress();
+    if (!mac) throw new Error("MAC address not found in URL. Cannot activate voucher.");
+    const response = await fetch(`/api/sessions/voucher?mac=${mac}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+    });
+    return handleResponse(response);
+};
+
+export const logout = async (): Promise<void> => {
+    const mac = getMacAddress();
+    if (!mac) throw new Error("MAC address not found in URL. Cannot log out.");
+    const response = await fetch(`/api/sessions/current?mac=${mac}`, {
+        method: 'DELETE',
+    });
+    await handleResponse(response);
+};
+
+// --- Admin API ---
+
+export const loginAdmin = async (password: string): Promise<string> => {
+    const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
     });
-    if (data && data.token) {
-        sessionStorage.setItem('adminToken', data.token);
-    } else {
-        throw new Error("Login failed: token not provided by server.");
-    }
-    return data;
+    const data = await handleResponse(response);
+    return data.token;
 };
 
-export const getDashboardStats = async (): Promise<AdminDashboardStats> => {
-  return authenticatedAdminApiFetch('/api/admin/stats');
+export const getAdminStats = async (): Promise<AdminStats> => {
+    const response = await fetch('/api/admin/stats', { headers: getAuthHeaders() });
+    return handleResponse(response);
 };
 
 export const getSystemInfo = async (): Promise<SystemInfo> => {
-    return authenticatedAdminApiFetch('/api/admin/system-info');
+    const response = await fetch('/api/admin/system-info', { headers: getAuthHeaders() });
+    return handleResponse(response);
 };
 
-export const getNetworkInfo = async (): Promise<NetworkInfo> => {
-    return authenticatedAdminApiFetch('/api/admin/network-info');
+export const getNetworkInfo = async (): Promise<NetworkInterface[]> => {
+    const response = await fetch('/api/admin/network-info', { headers: getAuthHeaders() });
+    return handleResponse(response);
 };
 
 export const getVouchers = async (): Promise<Voucher[]> => {
-  return authenticatedAdminApiFetch('/api/admin/vouchers');
+    const response = await fetch('/api/admin/vouchers', { headers: getAuthHeaders() });
+    return handleResponse(response);
 };
 
-export const generateNewVoucher = async (duration: number): Promise<string> => {
-    const data = await authenticatedAdminApiFetch('/api/admin/vouchers', {
+export const createVoucher = async (duration: number): Promise<{ code: string }> => {
+    const response = await fetch('/api/admin/vouchers', {
         method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration }),
     });
-    if (!data || !data.code) {
-        throw new Error("API did not return a new voucher code.");
-    }
-    return data.code;
+    return handleResponse(response);
 };
 
-export const getNetworkSettings = async (): Promise<NetworkSettings> => {
-    return authenticatedAdminApiFetch('/api/admin/settings');
+export const getAdminSettings = async (): Promise<{ ssid: string }> => {
+    const response = await fetch('/api/admin/settings', { headers: getAuthHeaders() });
+    return handleResponse(response);
 };
 
-export const updateNetworkSsid = async (ssid: string): Promise<void> => {
-    if (!ssid || ssid.length < 3) {
-        throw new Error("SSID must be at least 3 characters long.");
-    }
-    await authenticatedAdminApiFetch('/api/admin/settings', {
+export const updateAdminSettings = async (ssid: string): Promise<{ message: string }> => {
+    const response = await fetch('/api/admin/settings', {
         method: 'PUT',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ ssid }),
     });
+    return handleResponse(response);
 };
 
-export const getNetworkConfiguration = async (): Promise<NetworkConfiguration> => {
-    return authenticatedAdminApiFetch('/api/admin/network-config');
+export const getNetworkConfig = async (): Promise<NetworkConfig> => {
+    const response = await fetch('/api/admin/network-config', { headers: getAuthHeaders() });
+    return handleResponse(response);
 };
 
-export const updateNetworkConfiguration = async (config: NetworkConfiguration): Promise<void> => {
-    await authenticatedAdminApiFetch('/api/admin/network-config', {
+export const updateNetworkConfig = async (config: NetworkConfig): Promise<{ message: string }> => {
+    const response = await fetch('/api/admin/network-config', {
         method: 'PUT',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
     });
-};
-
-export const getPortalHtml = async (): Promise<{ html: string }> => {
-    return authenticatedAdminApiFetch('/api/admin/portal-html');
-};
-
-export const updatePortalHtml = async (html: string): Promise<void> => {
-    await authenticatedAdminApiFetch('/api/admin/portal-html', {
-        method: 'PUT',
-        body: JSON.stringify({ html }),
-    });
-};
-
-export const resetPortalHtml = async (): Promise<{ html: string }> => {
-    return authenticatedAdminApiFetch('/api/admin/portal-html/reset', {
-        method: 'POST',
-    });
-};
-
-export const getUpdaterStatus = async (): Promise<UpdaterStatus> => {
-    return authenticatedAdminApiFetch('/api/admin/updater/status');
-};
-
-export const triggerUpdate = async (): Promise<{ message: string }> => {
-    return authenticatedAdminApiFetch('/api/admin/updater/update', {
-        method: 'POST',
-    });
-};
-
-export const createBackup = async (): Promise<{ message: string }> => {
-    return authenticatedAdminApiFetch('/api/admin/updater/backup', {
-        method: 'POST',
-    });
-};
-
-export const restoreFromBackup = async (): Promise<{ message: string }> => {
-    return authenticatedAdminApiFetch('/api/admin/updater/restore', {
-        method: 'POST',
-    });
-};
-
-export const deleteBackup = async (): Promise<{ message: string }> => {
-    return authenticatedAdminApiFetch('/api/admin/updater/backup', {
-        method: 'DELETE',
-    });
+    return handleResponse(response);
 };
 
 export const resetDatabase = async (): Promise<{ message: string }> => {
-    return authenticatedAdminApiFetch('/api/admin/database/reset', {
+    const response = await fetch('/api/admin/database/reset', {
         method: 'POST',
+        headers: getAuthHeaders()
     });
+    return handleResponse(response);
+};
+
+export const getUpdaterStatus = async (): Promise<UpdaterStatus> => {
+    const response = await fetch('/api/admin/updater/status', { headers: getAuthHeaders() });
+    return handleResponse(response);
+};
+
+export const getPortalHtml = async (): Promise<{ html: string }> => {
+    const response = await fetch('/api/admin/portal-html', { headers: getAuthHeaders() });
+    return handleResponse(response);
+};
+
+export const updatePortalHtml = async (html: string): Promise<{ message: string }> => {
+    const response = await fetch('/api/admin/portal-html', {
+        method: 'PUT',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html }),
+    });
+    return handleResponse(response);
+};
+
+export const resetPortalHtml = async (): Promise<{ html: string }> => {
+    const response = await fetch('/api/admin/portal-html/reset', {
+        method: 'POST',
+        headers: getAuthHeaders()
+    });
+    return handleResponse(response);
 };

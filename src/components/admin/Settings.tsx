@@ -1,24 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getNetworkSettings, updateNetworkSsid, resetDatabase } from '../../services/wifiService';
-import WifiNameGenerator from '../WifiNameGenerator';
-import { TrashIcon } from '../icons/TrashIcon';
+import React, { useState, useEffect } from 'react';
+import { getAdminSettings, updateAdminSettings, resetDatabase } from '../../services/wifiService';
 
 const Settings: React.FC = () => {
     const [ssid, setSsid] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [isResetting, setIsResetting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState<string | null>(null);
+    const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
 
     useEffect(() => {
         const fetchSettings = async () => {
             setIsLoading(true);
             try {
-                const settings = await getNetworkSettings();
+                const settings = await getAdminSettings();
                 setSsid(settings.ssid);
-            } catch (err) {
-                setError('Failed to load settings.');
+            } catch (err: any) {
+                setError(err.message);
             } finally {
                 setIsLoading(false);
             }
@@ -29,89 +26,80 @@ const Settings: React.FC = () => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSaving(true);
-        setError(null);
-        setSuccess(null);
+        setMessage('');
+        setError('');
         try {
-            await updateNetworkSsid(ssid);
-            setSuccess('SSID updated successfully!');
-        } catch (err) {
-            setError((err as Error).message);
+            const response = await updateAdminSettings(ssid);
+            setMessage(response.message);
+        } catch (err: any) {
+            setError(err.message);
         } finally {
             setIsSaving(false);
-            setTimeout(() => setSuccess(null), 3000);
         }
     };
-    
-    const handleIdeaApplied = useCallback((idea: string) => {
-        setSsid(idea);
-    }, []);
 
     const handleResetDatabase = async () => {
-        const confirmed = window.confirm(
-            'DANGER: Are you absolutely sure?\n\nThis will completely wipe all data including vouchers, sessions, settings, and the admin password. The database will be reset to its initial factory state. This action cannot be undone.'
-        );
-
-        if (confirmed) {
-            setIsResetting(true);
-            setError(null);
-            setSuccess(null);
-            try {
-                await resetDatabase();
-                setSuccess('Database reset initiated. The server will restart, and you will be logged out.');
-                setTimeout(() => {
-                    sessionStorage.removeItem('adminToken');
-                    window.location.href = '/admin';
-                }, 4000);
-            } catch (err) {
-                setError((err as Error).message);
-                setIsResetting(false);
+        if (window.confirm("ARE YOU SURE? This will delete all vouchers and session data permanently. This action cannot be undone.")) {
+            if (window.confirm("LAST CHANCE. Are you absolutely sure you want to reset the entire database?")) {
+                setIsSaving(true);
+                setError('');
+                setMessage('');
+                try {
+                    const res = await resetDatabase();
+                    setMessage(res.message + " The page will now reload.");
+                    setTimeout(() => window.location.reload(), 3000);
+                } catch (err: any) {
+                    setError(err.message);
+                    setIsSaving(false);
+                }
             }
         }
     };
 
-
-    if (isLoading) {
-        return <p className="text-slate-400 text-center">Loading settings...</p>;
-    }
+    if (isLoading) return <div>Loading settings...</div>;
 
     return (
-        <div className="space-y-6 animate-fade-in-slow">
-            <div>
-                <h3 className="text-xl font-bold text-indigo-400 mb-2">Network Name (SSID)</h3>
-                <form onSubmit={handleSave} className="space-y-3">
-                    <input
-                        type="text"
-                        value={ssid}
-                        onChange={(e) => setSsid(e.target.value)}
-                        placeholder="My Hotspot Name"
-                        className="w-full bg-slate-900/50 border-2 border-slate-600 rounded-lg py-2 px-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        disabled={isSaving || isResetting}
-                        aria-label="Network SSID Input"
-                    />
-                    {error && <p className="text-sm text-red-400">{error}</p>}
-                    {success && <p className="text-sm text-green-400">{success}</p>}
-                    <button type="submit" disabled={isSaving || isResetting} className="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-wait">
-                        {isSaving ? 'Saving...' : 'Save Changes'}
+        <div className="animate-fade-in space-y-6">
+            <h1 className="text-3xl font-bold text-gray-800">Settings</h1>
+
+            {message && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">{message}</div>}
+            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">{error}</div>}
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
+                <h2 className="text-xl font-semibold text-gray-700 mb-4">Network Settings</h2>
+                <form onSubmit={handleSave}>
+                    <div className="mb-4">
+                        <label htmlFor="ssid" className="block text-sm font-medium text-gray-700">
+                            Wi-Fi Name (SSID)
+                        </label>
+                        <input
+                            type="text"
+                            id="ssid"
+                            value={ssid}
+                            onChange={(e) => setSsid(e.target.value)}
+                            className="mt-1 block w-full max-w-xs rounded-md border-gray-300 shadow-sm"
+                        />
+                        <p className="mt-2 text-sm text-gray-500">Note: This only changes the name on the portal page, not the actual Wi-Fi broadcast name.</p>
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300"
+                    >
+                        {isSaving ? 'Saving...' : 'Save SSID'}
                     </button>
                 </form>
             </div>
             
-            <WifiNameGenerator onApplyIdea={handleIdeaApplied} />
-
-            <div className="pt-6 border-t border-slate-700">
-                <h3 className="text-xl font-bold text-red-500 mb-2">Database Management</h3>
-                <p className="text-xs text-slate-400 mb-3">
-                    If your database becomes corrupted or you want to start fresh, you can reset it to factory defaults.
-                    <br/>
-                    <span className="font-bold text-amber-400">Warning: This will delete all data permanently.</span>
-                </p>
-                <button 
+            <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-red-500">
+                <h2 className="text-xl font-semibold text-red-700 mb-4">Danger Zone</h2>
+                <p className="text-gray-600 mb-4">Resetting the database will wipe all vouchers, sessions, and settings. Use with extreme caution.</p>
+                <button
                     onClick={handleResetDatabase}
-                    disabled={isSaving || isResetting}
-                    className="w-full flex items-center justify-center gap-2 bg-red-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 disabled:bg-slate-700 disabled:cursor-not-allowed"
+                    disabled={isSaving}
+                    className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300"
                 >
-                    <TrashIcon className="w-5 h-5"/>
-                    <span>{isResetting ? 'Resetting...' : 'Reset Database to Factory Defaults'}</span>
+                    {isSaving ? 'Processing...' : 'Reset Database'}
                 </button>
             </div>
         </div>

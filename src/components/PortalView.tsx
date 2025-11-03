@@ -1,106 +1,105 @@
-import React, { useState } from 'react';
-import { TicketIcon } from './icons/TicketIcon';
+import React, { useState, useEffect } from 'react';
+import { getCurrentSession, logout, getPublicSettings } from '../services/wifiService';
+import { Session } from '../types';
+import Timer from './Timer';
+import ConnectView from './ConnectView';
+import WifiNameGenerator from './WifiNameGenerator';
+import { WifiIcon } from './icons/WifiIcon';
 
-interface PortalViewProps {
-  onActivate: (code: string) => void;
-  onCoinInsert: () => void;
-  isLoading: boolean;
-  error: string | null;
-}
+const PortalView: React.FC = () => {
+    const [session, setSession] = useState<Session | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [ssid, setSsid] = useState('SULIT WIFI');
+    const [generatedSsid, setGeneratedSsid] = useState('');
 
-const PortalView: React.FC<PortalViewProps> = ({ onActivate, onCoinInsert, isLoading, error }) => {
-  const [voucherCode, setVoucherCode] = useState('');
+    const checkSession = async () => {
+        try {
+            const currentSession = await getCurrentSession();
+            setSession(currentSession);
+        } catch (e: any) {
+            console.error("Failed to check session:", e);
+            // Don't show an error, just assume no session
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (voucherCode.trim() && !isLoading) {
-      onActivate(voucherCode.trim().toUpperCase());
-    }
-  };
+    const fetchSettings = async () => {
+        try {
+            const settings = await getPublicSettings();
+            setSsid(settings.ssid);
+        } catch (e) {
+            console.error("Failed to fetch settings:", e);
+        }
+    };
 
-  const handleCoinSubmit = () => {
-    if (!isLoading) {
-        onCoinInsert();
-    }
-  }
+    useEffect(() => {
+        fetchSettings();
+        checkSession();
+    }, []);
 
-  return (
-    <div className="flex flex-col items-center animate-fade-in">
-      <h2 className="text-2xl font-bold text-center text-sky-300">Get Connected</h2>
-      <p className="mt-2 text-center text-slate-400">
-        Enter your voucher code or insert a coin to activate your internet session.
-      </p>
+    const handleLogout = async () => {
+        setIsLoading(true);
+        try {
+            await logout();
+            setSession(null);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-      <form onSubmit={handleSubmit} className="w-full mt-6">
-        <div className="relative">
-          <TicketIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            value={voucherCode}
-            onChange={(e) => setVoucherCode(e.target.value)}
-            placeholder="VOUCHER-CODE"
-            className="w-full bg-slate-900/50 border-2 border-slate-600 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all text-center tracking-widest font-mono"
-            disabled={isLoading}
-            aria-label="Voucher Code Input"
-          />
-        </div>
-
-        {error && (
-          <p className="mt-3 text-sm text-center text-red-400 bg-red-900/50 px-3 py-2 rounded-md animate-shake">
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isLoading || !voucherCode.trim()}
-          className="w-full mt-4 bg-sky-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-sky-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-sky-500 transition-all duration-300 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center"
-        >
-          {isLoading ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Activating...
-            </>
-          ) : (
-            'Activate Session'
-          )}
-        </button>
-      </form>
-       <div className="flex items-center w-full my-6">
-          <div className="flex-grow border-t border-slate-600"></div>
-          <span className="flex-shrink mx-4 text-slate-500 text-sm font-semibold">OR</span>
-          <div className="flex-grow border-t border-slate-600"></div>
-      </div>
-      
-      <div className="w-full flex flex-col items-center">
-        <h3 className="text-xl font-bold text-amber-300">Pay with Coins</h3>
-        <p className="text-xs text-slate-400 mt-1 mb-4">1 Coin = 15 Minutes</p>
-        
-        <button
-            onClick={handleCoinSubmit}
-            disabled={isLoading}
-            className="group relative w-48 h-20 bg-slate-800 border-4 border-slate-600 rounded-xl flex items-center justify-center p-2 shadow-lg transition-all hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-slate-600"
-            aria-label="Insert Coin to get 15 minutes of internet"
-        >
-            <div className="w-40 h-full bg-slate-700 rounded-md flex items-center justify-center shadow-inner shadow-black/30">
-                <div className="w-2 h-10 bg-black rounded-sm shadow-inner shadow-slate-900 group-hover:bg-amber-400 group-hover:shadow-amber-500/50 transition-all"></div>
+    if (isLoading) {
+        return (
+            <div className="flex justify-center items-center h-screen bg-gray-100">
+                <WifiIcon className="w-16 h-16 text-indigo-500 animate-pulse" />
             </div>
-             <div className="absolute -bottom-4 bg-slate-800 px-3 py-0.5 rounded-md border-2 border-slate-600 group-hover:border-amber-400 transition-all">
-                <span className="text-amber-400 font-bold text-sm tracking-wider uppercase group-hover:text-amber-300">Insert Coin</span>
-             </div>
-        </button>
+        );
+    }
+    
+    return (
+        <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
+            <main className="w-full max-w-md bg-white rounded-lg shadow-xl p-8 space-y-6">
+                <div className="text-center">
+                    <WifiIcon className="mx-auto h-12 w-auto text-indigo-600" />
+                    <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-gray-900">
+                        Welcome to {ssid}
+                    </h1>
+                </div>
 
-         <p className="text-xs mt-8 text-slate-500 text-center">
-            This simulates a physical coin slot.
-            <br />
-            Clicking will start a 15-minute session.
-        </p>
-      </div>
-    </div>
-  );
+                {session ? (
+                    <div className="animate-fade-in">
+                        <h2 className="text-2xl font-bold text-center text-gray-800 mb-2">Connected!</h2>
+                        <p className="text-center text-gray-600 mb-6">Time Remaining:</p>
+                        <Timer initialRemainingTime={session.remainingTime} onExpire={() => setSession(null)} />
+                        <button
+                            onClick={handleLogout}
+                            className="mt-8 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        >
+                            Disconnect
+                        </button>
+                    </div>
+                ) : (
+                    <ConnectView onConnect={setSession} />
+                )}
+
+                {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
+                
+                {!session && <WifiNameGenerator onNameGenerated={setGeneratedSsid} />}
+                {generatedSsid && !session && (
+                    <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-md text-center animate-fade-in-slow">
+                        <p className="text-sm text-indigo-700">How about this name?</p>
+                        <p className="font-bold text-lg text-indigo-900">{generatedSsid}</p>
+                    </div>
+                )}
+            </main>
+            <footer className="mt-8 text-center text-gray-500 text-sm">
+                <p>&copy; {new Date().getFullYear()} SULIT WIFI. All Rights Reserved.</p>
+            </footer>
+        </div>
+    );
 };
 
 export default PortalView;

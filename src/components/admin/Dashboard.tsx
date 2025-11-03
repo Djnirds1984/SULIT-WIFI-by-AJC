@@ -1,173 +1,90 @@
 import React, { useState, useEffect } from 'react';
-import { getDashboardStats, getSystemInfo, getNetworkInfo } from '../../services/wifiService';
-import { WifiIcon } from '../icons/WifiIcon';
-import { TicketIcon } from '../icons/TicketIcon';
-import { UserGroupIcon } from '../icons/UserGroupIcon';
-import { CpuChipIcon } from '../icons/CpuChipIcon';
-import { MemoryChipIcon } from '../icons/MemoryChipIcon';
-import { SdCardIcon } from '../icons/SdCardIcon';
-import { ServerStackIcon } from '../icons/ServerStackIcon';
-import { AdminDashboardStats, SystemInfo, NetworkInfo } from '../../types';
+import { getAdminStats, getSystemInfo } from '../../services/wifiService';
+import { AdminStats, SystemInfo } from '../../types';
+import { UserGroupIcon, TicketIcon, CpuChipIcon, MemoryChipIcon, SdCardIcon } from '../icons';
 
-const StatCard = ({ icon, label, value, color }: { icon: React.ReactElement<any>, label: string, value: string | number, color: string }) => (
-    <div className="bg-slate-900/50 p-4 rounded-lg flex items-center gap-4 border-l-4" style={{ borderColor: color }}>
-        <div className={`p-2 rounded-full`} style={{ backgroundColor: `${color}20` }}>
-            {React.cloneElement(icon, { className: 'w-6 h-6', style: { color } })}
+const StatCard: React.FC<{ title: string; value: string | number; icon: React.FC<any> }> = ({ title, value, icon: Icon }) => (
+    <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className="bg-indigo-500 rounded-full p-3 mr-4 text-white">
+            <Icon className="h-6 w-6" />
         </div>
         <div>
-            <p className="text-sm text-slate-400">{label}</p>
-            <p className="text-2xl font-bold text-white">{value}</p>
+            <p className="text-sm text-gray-600">{title}</p>
+            <p className="text-2xl font-bold text-gray-900">{value}</p>
         </div>
     </div>
 );
 
-interface SpecCardProps {
-    icon: React.ReactElement<any>;
-    label: string | React.ReactNode;
-    children: React.ReactNode;
-}
-
-const SpecCard: React.FC<SpecCardProps> = ({ icon, label, children }) => (
-    <div className="bg-slate-900/50 p-4 rounded-lg flex gap-4">
-         <div className="p-2 rounded-full bg-slate-800/50 h-fit">
-            {React.cloneElement(icon, { className: 'w-6 h-6 text-indigo-400' })}
-        </div>
-        <div className="w-full">
-            <div className="text-sm text-slate-400 font-semibold">{label}</div>
-            <div className="mt-1">
-                {children}
-            </div>
-        </div>
-    </div>
-);
-
-const ProgressBar = ({ value, total, colorClass }: { value: number, total: number, colorClass: string}) => {
+const ProgressBar: React.FC<{ value: number; total: number; unit: string }> = ({ value, total, unit }) => {
     const percentage = total > 0 ? (value / total) * 100 : 0;
     return (
-         <div className="w-full bg-slate-700 rounded-full h-2.5">
-            <div className={`${colorClass} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
+        <div>
+            <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <span>{`${value} ${unit}`}</span>
+                <span>{`${total} ${unit}`}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div className="bg-green-500 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+            </div>
         </div>
-    )
-}
-
-const LoadingPlaceholder = () => <div className="text-center p-4 text-slate-400 text-sm">Loading...</div>;
-const ErrorPlaceholder = ({ message }: { message: string }) => <div className="text-center p-4 text-red-400 text-sm">{message}</div>;
+    );
+};
 
 const Dashboard: React.FC = () => {
-    const [stats, setStats] = useState<AdminDashboardStats | null>(null);
+    const [stats, setStats] = useState<AdminStats | null>(null);
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
-    const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
-    
-    const [isStatsLoading, setIsStatsLoading] = useState(true);
-    const [isSystemInfoLoading, setIsSystemInfoLoading] = useState(true);
-    const [isNetworkInfoLoading, setIsNetworkInfoLoading] = useState(true);
-    
-    const [statsError, setStatsError] = useState<string | null>(null);
-    const [systemInfoError, setSystemInfoError] = useState<string | null>(null);
-    const [networkInfoError, setNetworkInfoError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        const fetchStats = async () => {
-            setIsStatsLoading(true);
-            setStatsError(null);
+        const fetchData = async () => {
+            setLoading(true);
+            setError('');
             try {
-                const statsData = await getDashboardStats();
-                setStats(statsData);
-            } catch (error) {
-                console.error("Failed to fetch stats", error);
-                setStatsError("Could not load system stats.");
+                const [adminStats, sysInfo] = await Promise.all([getAdminStats(), getSystemInfo()]);
+                setStats(adminStats);
+                setSystemInfo(sysInfo);
+            } catch (error: any) {
+                console.error("Failed to load dashboard data", error);
+                setError(error.message || "Could not load dashboard data.");
             } finally {
-                setIsStatsLoading(false);
+                setLoading(false);
             }
         };
-
-        const fetchSystemInfo = async () => {
-            setIsSystemInfoLoading(true);
-            setSystemInfoError(null);
-            try {
-                const systemInfoData = await getSystemInfo();
-                setSystemInfo(systemInfoData);
-            } catch (error) {
-                console.error("Failed to fetch system info", error);
-                setSystemInfoError("Could not load hardware information.");
-            } finally {
-                setIsSystemInfoLoading(false);
-            }
-        };
-        
-        const fetchNetworkInfo = async () => {
-            setIsNetworkInfoLoading(true);
-            setNetworkInfoError(null);
-            try {
-                const networkInfoData = await getNetworkInfo();
-                setNetworkInfo(networkInfoData);
-            } catch (error) {
-                console.error("Failed to fetch network info", error);
-                setNetworkInfoError("Could not load network information.");
-            } finally {
-                setIsNetworkInfoLoading(false);
-            }
-        };
-
-        fetchStats();
-        fetchSystemInfo();
-        fetchNetworkInfo();
+        fetchData();
     }, []);
 
+    if (loading) return <div>Loading dashboard...</div>;
+    if (error) return <div className="text-red-500">{error}</div>;
+
     return (
-        <div className="space-y-6 animate-fade-in-slow">
-            <div>
-                <h3 className="text-xl font-bold text-indigo-400 mb-4">System Status</h3>
-                {isStatsLoading ? <LoadingPlaceholder /> : statsError ? <ErrorPlaceholder message={statsError} /> : stats && (
-                    <div className="space-y-4">
-                        <StatCard icon={<UserGroupIcon />} label="Active Sessions" value={stats.activeSessions} color="#818cf8" />
-                        <StatCard icon={<TicketIcon />} label="Vouchers Used" value={stats.totalVouchersUsed} color="#60a5fa" />
-                        <StatCard icon={<WifiIcon />} label="Vouchers Available" value={stats.totalVouchersAvailable} color="#4ade80" />
-                    </div>
-                )}
+        <div className="animate-fade-in space-y-8">
+            <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <StatCard title="Active Sessions" value={stats?.activeSessions ?? 'N/A'} icon={UserGroupIcon} />
+                <StatCard title="Vouchers Used" value={stats?.totalVouchersUsed ?? 'N/A'} icon={TicketIcon} />
+                <StatCard title="Vouchers Available" value={stats?.totalVouchersAvailable ?? 'N/A'} icon={TicketIcon} />
             </div>
 
-            <div>
-                 <h3 className="text-xl font-bold text-indigo-400 mb-4">Hardware Information</h3>
-                 {isSystemInfoLoading ? <LoadingPlaceholder /> : systemInfoError ? <ErrorPlaceholder message={systemInfoError} /> : systemInfo && (
-                    <div className="space-y-4">
-                        <SpecCard icon={<CpuChipIcon />} label="CPU">
-                            <p className="text-md font-bold text-white truncate">{systemInfo.cpu.model}</p>
-                            <p className="text-xs text-slate-400">{systemInfo.cpu.cores}-Core Processor</p>
-                        </SpecCard>
-                         <SpecCard icon={<MemoryChipIcon />} label="RAM Usage">
-                            <p className="text-sm font-bold text-white mb-2">{systemInfo.ram.usedMb} MB / {systemInfo.ram.totalMb} MB</p>
-                            <ProgressBar value={systemInfo.ram.usedMb} total={systemInfo.ram.totalMb} colorClass="bg-sky-500" />
-                        </SpecCard>
-                         <SpecCard icon={<SdCardIcon />} label="SD Card Usage">
-                            <p className="text-sm font-bold text-white mb-2">{(systemInfo.disk.usedMb / 1024).toFixed(1)} GB / {(systemInfo.disk.totalMb / 1024).toFixed(1)} GB</p>
-                            <ProgressBar value={systemInfo.disk.usedMb} total={systemInfo.disk.totalMb} colorClass="bg-emerald-500" />
-                        </SpecCard>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+                <h2 className="text-xl font-semibold text-gray-700 mb-4">System Status</h2>
+                {systemInfo ? (
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="font-medium text-gray-800 flex items-center mb-2"><CpuChipIcon className="h-5 w-5 mr-2" /> CPU</h3>
+                            <p className="text-sm text-gray-600">{systemInfo.cpu.model} ({systemInfo.cpu.cores} cores)</p>
+                        </div>
+                        <div>
+                            <h3 className="font-medium text-gray-800 flex items-center mb-2"><MemoryChipIcon className="h-5 w-5 mr-2" /> RAM Usage</h3>
+                            <ProgressBar value={systemInfo.ram.usedMb} total={systemInfo.ram.totalMb} unit="MB" />
+                        </div>
+                        <div>
+                            <h3 className="font-medium text-gray-800 flex items-center mb-2"><SdCardIcon className="h-5 w-5 mr-2" /> Disk Usage</h3>
+                            <ProgressBar value={systemInfo.disk.usedMb} total={systemInfo.disk.totalMb} unit="MB" />
+                        </div>
                     </div>
-                )}
-            </div>
-
-            <div>
-                <h3 className="text-xl font-bold text-indigo-400 mb-4">Network Interfaces</h3>
-                {isNetworkInfoLoading ? <LoadingPlaceholder /> : networkInfoError ? <ErrorPlaceholder message={networkInfoError} /> : networkInfo && (
-                    <div className="space-y-4">
-                        {networkInfo.map(iface => (
-                            <SpecCard key={iface.name} icon={<ServerStackIcon />} label={
-                                <div className="flex items-center gap-2">
-                                    <span className={`w-3 h-3 rounded-full ${iface.status === 'UP' ? 'bg-green-500' : 'bg-slate-500'}`}></span>
-                                    <p className="text-md font-bold text-white truncate">{iface.name}</p>
-                                </div>
-                            }>
-                                <div className="text-xs text-slate-300 font-mono space-y-1">
-                                    {iface.ip4 && <p>IPv4: {iface.ip4}</p>}
-                                    {iface.ip6 && <p>IPv6: {iface.ip6}</p>}
-                                    {!iface.ip4 && !iface.ip6 && <p className="text-slate-500">No IP addresses assigned</p>}
-                                </div>
-                            </SpecCard>
-                        ))}
-                         {networkInfo.length === 0 && <p className="text-center text-sm text-slate-500 py-4">No network interfaces found.</p>}
-                    </div>
-                )}
+                ) : <p>Could not load system information.</p>}
             </div>
         </div>
     );
