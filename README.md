@@ -133,7 +133,7 @@ The application requires a PostgreSQL database to store all persistent data.
 
 2.  **Permissions**: Add your user to the `gpio` group and reboot.
     ```bash
-    sudo usermod -aG gpio <your-username>
+    sudo usod -aG gpio <your-username>
     sudo reboot
     ```
 
@@ -148,24 +148,40 @@ We use Nginx as a reverse proxy and `nodogsplash` as the captive portal software
 sudo apt-get install -y nginx nodogsplash ifupdown
 ```
 
-### 2. Configure Nginx (Simplified)
-Nginx will forward all HTTP traffic to our single Node.js application.
+### 2. Configure Nginx (Robust)
+Nginx will act as the web server for the portal's user interface and as a reverse proxy for the backend API. This setup is more robust, as it allows the portal interface to load even if the backend server is temporarily down, preventing "502 Bad Gateway" errors.
 
 *   **Create Nginx config file**: `sudo nano /etc/nginx/sites-available/sulit-wifi-portal`
-*   **Paste the following simplified configuration**:
+*   **Paste the following configuration**:
+
+    *Make sure to replace `/home/pi/sulit-wifi-portal/public` with the **absolute path** to your project's `public` directory.*
+
     ```nginx
-    # This single server block handles all traffic and proxies it to our app
     server {
         listen 80 default_server;
         listen [::]:80 default_server;
 
-        location / {
-            proxy_pass http://localhost:3001; # Forward all traffic to the app
+        # --- IMPORTANT ---
+        # Replace this with the ABSOLUTE path to your project's 'public' folder.
+        # Example for a user named 'pi': root /home/pi/sulit-wifi-portal/public;
+        root /home/pi/sulit-wifi-portal/public;
+
+        index index.html;
+
+        # API requests are proxied to the Node.js backend server
+        location /api {
+            proxy_pass http://localhost:3001;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
             proxy_set_header Host $host;
             proxy_cache_bypass $http_upgrade;
+        }
+
+        # All other requests are part of the Single Page App (SPA).
+        # This serves the main index.html file, allowing React Router to handle routes like /admin.
+        location / {
+            try_files $uri $uri/ /index.html;
         }
     }
     ```
