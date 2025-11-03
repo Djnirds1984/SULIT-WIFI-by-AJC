@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import { WifiSession } from '../types';
 import Timer from './Timer';
