@@ -45,7 +45,7 @@ const ndsctl = async (subcommand, mac) => {
     try {
         await executeCommand(`sudo /usr/bin/ndsctl ${subcommand} ${mac}`);
         console.log(`[NDSCTL] Executed: ${subcommand} for MAC ${mac}`);
-    } catch (error) => {
+    } catch (error) {
         console.error(`[NDSCTL] Failed to execute ${subcommand} for MAC ${mac}:`, error);
         // Don't throw, as some commands might fail if user is already gone
     }
