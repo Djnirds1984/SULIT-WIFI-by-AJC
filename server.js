@@ -191,9 +191,10 @@ portalApp.delete('/api/sessions/current', async (req, res) => {
     }
 });
 
-// Serve Frontend
-portalApp.use(express.static(path.join(__dirname, 'dist')));
-portalApp.use(express.static(path.join(__dirname))); // For index.html in root
+// --- Serve Portal Frontend ---
+// Serve static assets from the 'dist' directory
+portalApp.use('/dist', express.static(path.join(__dirname, 'dist')));
+// Serve the main index.html for any other GET request, enabling SPA routing
 portalApp.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -498,6 +499,12 @@ adminApp.delete('/api/admin/updater/backup', async (req, res) => {
     } else {
         res.status(404).json({ message: 'No backup file to delete.' });
     }
+});
+
+// --- Serve Admin Frontend ---
+adminApp.use('/dist', express.static(path.join(__dirname, 'dist')));
+adminApp.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // --- Server Startup ---
