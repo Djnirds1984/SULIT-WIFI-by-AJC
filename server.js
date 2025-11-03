@@ -23,8 +23,8 @@ const adminApp = express();
 // --- Middleware ---
 portalApp.use(cors());
 adminApp.use(cors());
-// IMPORTANT: The body parser is now applied to specific routes on the portal server, not globally.
-// The admin server still needs a global body parser for all its routes.
+// Apply a global body parser to both apps. This is crucial for the proxy fix.
+portalApp.use(express.json());
 adminApp.use(express.json());
 
 
@@ -102,16 +102,29 @@ try {
 // --- PORTAL SERVER (Port 3001) - For local hotspot users       ---
 // =================================================================
 
-// Proxy admin API calls to the admin server. This MUST be defined before other routes.
-// By NOT using a global body-parser on the portalApp, the raw request stream
-// is correctly forwarded to the adminApp, which then parses it.
-portalApp.use('/api/admin', createProxyMiddleware({
+// DEFINITIVE FIX: Configure the proxy to correctly re-stream the request body.
+// The body-parser middleware (express.json()) runs BEFORE this proxy. It reads the
+// request stream. The onProxyReq event handler is essential to write that
+// parsed body back into the proxy request so the admin server can receive it.
+const adminProxy = createProxyMiddleware({
     target: `http://localhost:${ADMIN_PORT}`,
     changeOrigin: true,
-}));
+    onProxyReq: (proxyReq, req, res) => {
+        if (req.body) {
+            const bodyData = JSON.stringify(req.body);
+            // We need to set the content-type and content-length headers so the
+            // admin server can parse the request correctly.
+            proxyReq.setHeader('Content-Type', 'application/json');
+            proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+            // Write the body to the proxy request stream.
+            proxyReq.write(bodyData);
+        }
+    },
+});
 
-// Define a body parser instance to be used ONLY on the routes that need it.
-const portalBodyParser = express.json();
+// The proxy must be defined AFTER the body parser but BEFORE other routes.
+portalApp.use('/api/admin', adminProxy);
+
 
 // --- Public API (No Auth) ---
 portalApp.get('/api/public/settings', async (req, res) => {
@@ -124,8 +137,7 @@ portalApp.get('/api/public/settings', async (req, res) => {
 });
 
 // --- Session Management ---
-// Apply the body parser middleware only to these POST routes.
-portalApp.post('/api/sessions/voucher', portalBodyParser, async (req, res) => {
+portalApp.post('/api/sessions/voucher', async (req, res) => {
     const { code } = req.body;
     const { mac } = req.query;
     if (!mac || !code) return res.status(400).json({ message: 'MAC address and voucher code are required.' });
@@ -145,7 +157,7 @@ portalApp.post('/api/sessions/voucher', portalBodyParser, async (req, res) => {
     }
 });
 
-portalApp.post('/api/sessions/coin', portalBodyParser, async (req, res) => {
+portalApp.post('/api/sessions/coin', async (req, res) => {
     const { mac } = req.query;
     if (!mac) return res.status(400).json({ message: 'MAC address is required.' });
     try {
