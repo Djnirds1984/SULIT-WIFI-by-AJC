@@ -33,10 +33,12 @@ const checkConnection = async () => {
 };
 
 const initializeDatabase = async () => {
-    // ONE-TIME FIX: Drop the sessions table to ensure a clean schema.
-    // This resolves a bug where an old, incorrect table structure caused dashboard errors.
-    // This will clear active sessions but is necessary to repair the database.
+    // ONE-TIME FIX: Drop tables with potentially outdated schemas.
+    // This resolves bugs where old table structures cause errors (e.g., missing columns).
+    // This action will clear all existing sessions and vouchers but is necessary to
+    // repair the database to a known-good state.
     await query(`DROP TABLE IF EXISTS sessions;`);
+    await query(`DROP TABLE IF EXISTS vouchers;`);
 
     // Create tables if they don't exist
     await query(`
