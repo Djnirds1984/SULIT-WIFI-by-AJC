@@ -462,6 +462,25 @@ adminRouter.delete('/updater/backup', async (req, res) => {
     }
 });
 
+// --- Admin Database Management ---
+adminRouter.post('/database/reset', async (req, res) => {
+    try {
+        console.log('[Admin] Received request to reset database.');
+        await db.resetDatabase();
+        res.json({ message: 'Database reset initiated. Server is restarting.' });
+        
+        // Give the response time to send before restarting
+        setTimeout(() => {
+            console.log('[Admin] Restarting server after database reset...');
+            executeCommand('pm2 restart sulit-wifi');
+        }, 1000);
+
+    } catch (error) {
+        console.error("Database reset error:", error);
+        res.status(500).json({ message: 'Failed to reset the database.' });
+    }
+});
+
 // Mount the admin router under the /api/admin path
 app.use('/api/admin', adminRouter);
 

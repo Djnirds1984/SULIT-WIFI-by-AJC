@@ -199,3 +199,9 @@ export const deleteBackup = async (): Promise<{ message: string }> => {
         method: 'DELETE',
     });
 };
+
+export const resetDatabase = async (): Promise<{ message: string }> => {
+    return authenticatedAdminApiFetch('/api/admin/database/reset', {
+        method: 'POST',
+    });
+};

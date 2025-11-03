@@ -33,14 +33,8 @@ const checkConnection = async () => {
 };
 
 const initializeDatabase = async () => {
-    // ONE-TIME FIX: Drop tables with potentially outdated schemas.
-    // This resolves bugs where old table structures cause errors (e.g., missing columns).
-    // This action will clear all existing sessions and vouchers but is necessary to
-    // repair the database to a known-good state.
-    await query(`DROP TABLE IF EXISTS sessions;`);
-    await query(`DROP TABLE IF EXISTS vouchers;`);
-
-    // Create tables if they don't exist
+    // This function ensures the database schema exists. It is non-destructive
+    // and safe to run on every application start.
     await query(`
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -70,8 +64,7 @@ const initializeDatabase = async () => {
             password_hash TEXT NOT NULL
         );
     `);
-    // Track last seen MAC for coin slot functionality
-     await query(`
+    await query(`
         CREATE TABLE IF NOT EXISTS last_seen_mac (
             id INT PRIMARY KEY,
             mac_address TEXT NOT NULL,
@@ -79,9 +72,20 @@ const initializeDatabase = async () => {
         );
     `);
     
-    // Seed initial data if it doesn't exist
     await seedInitialData();
 };
+
+const resetDatabase = async () => {
+    // This is an explicitly destructive action that wipes all application data.
+    console.log('[DB] Dropping all tables for reset...');
+    await query(`DROP TABLE IF EXISTS sessions;`);
+    await query(`DROP TABLE IF EXISTS vouchers;`);
+    await query(`DROP TABLE IF EXISTS admin;`);
+    await query(`DROP TABLE IF EXISTS settings;`);
+    await query(`DROP TABLE IF EXISTS last_seen_mac;`);
+    console.log('[DB] All tables dropped successfully.');
+};
+
 
 const seedInitialData = async () => {
     const adminRes = await query('SELECT * FROM admin WHERE id = 1');
@@ -221,6 +225,7 @@ module.exports = {
     query,
     checkConnection,
     initializeDatabase,
+    resetDatabase,
     getVoucher,
     useVoucher,
     createVoucher,

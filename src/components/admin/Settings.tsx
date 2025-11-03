@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getNetworkSettings, updateNetworkSsid } from '../../services/wifiService';
+import { getNetworkSettings, updateNetworkSsid, resetDatabase } from '../../services/wifiService';
 import WifiNameGenerator from '../WifiNameGenerator';
+import { TrashIcon } from '../icons/TrashIcon';
 
 const Settings: React.FC = () => {
     const [ssid, setSsid] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
 
@@ -44,6 +46,30 @@ const Settings: React.FC = () => {
         setSsid(idea);
     }, []);
 
+    const handleResetDatabase = async () => {
+        const confirmed = window.confirm(
+            'DANGER: Are you absolutely sure?\n\nThis will completely wipe all data including vouchers, sessions, settings, and the admin password. The database will be reset to its initial factory state. This action cannot be undone.'
+        );
+
+        if (confirmed) {
+            setIsResetting(true);
+            setError(null);
+            setSuccess(null);
+            try {
+                await resetDatabase();
+                setSuccess('Database reset initiated. The server will restart, and you will be logged out.');
+                setTimeout(() => {
+                    sessionStorage.removeItem('adminToken');
+                    window.location.href = '/admin';
+                }, 4000);
+            } catch (err) {
+                setError((err as Error).message);
+                setIsResetting(false);
+            }
+        }
+    };
+
+
     if (isLoading) {
         return <p className="text-slate-400 text-center">Loading settings...</p>;
     }
@@ -59,18 +85,35 @@ const Settings: React.FC = () => {
                         onChange={(e) => setSsid(e.target.value)}
                         placeholder="My Hotspot Name"
                         className="w-full bg-slate-900/50 border-2 border-slate-600 rounded-lg py-2 px-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        disabled={isSaving}
+                        disabled={isSaving || isResetting}
                         aria-label="Network SSID Input"
                     />
                     {error && <p className="text-sm text-red-400">{error}</p>}
                     {success && <p className="text-sm text-green-400">{success}</p>}
-                    <button type="submit" disabled={isSaving} className="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-wait">
+                    <button type="submit" disabled={isSaving || isResetting} className="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-700 disabled:cursor-wait">
                         {isSaving ? 'Saving...' : 'Save Changes'}
                     </button>
                 </form>
             </div>
             
             <WifiNameGenerator onApplyIdea={handleIdeaApplied} />
+
+            <div className="pt-6 border-t border-slate-700">
+                <h3 className="text-xl font-bold text-red-500 mb-2">Database Management</h3>
+                <p className="text-xs text-slate-400 mb-3">
+                    If your database becomes corrupted or you want to start fresh, you can reset it to factory defaults.
+                    <br/>
+                    <span className="font-bold text-amber-400">Warning: This will delete all data permanently.</span>
+                </p>
+                <button 
+                    onClick={handleResetDatabase}
+                    disabled={isSaving || isResetting}
+                    className="w-full flex items-center justify-center gap-2 bg-red-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 disabled:bg-slate-700 disabled:cursor-not-allowed"
+                >
+                    <TrashIcon className="w-5 h-5"/>
+                    <span>{isResetting ? 'Resetting...' : 'Reset Database to Factory Defaults'}</span>
+                </button>
+            </div>
         </div>
     );
 };
