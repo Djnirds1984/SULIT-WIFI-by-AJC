@@ -1,12 +1,13 @@
 {
   "name": "sulit-wifi-portal",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A captive portal for SULIT WIFI on Orange Pi",
   "main": "server.js",
   "scripts": {
+    "clean": "rimraf ./dist",
     "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
     "build:js": "esbuild ./src/index.tsx --bundle --outfile=dist/bundle.js --jsx=automatic --minify",
-    "build": "npm run build:css && npm run build:js",
+    "build": "npm run clean && npm run build:css && npm run build:js",
     "start": "npm run build && node server.js",
     "dev": "node server.js"
   },
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.23.0",
+    "rimraf": "^5.0.7",
     "tailwindcss": "^3.4.4"
   }
 }

@@ -145,7 +145,7 @@ function App() {
         </main>
       </div>
       <footer className="text-center mt-6 text-xs text-slate-600">
-        <p>Powered by SULIT Hotspot Solutions</p>
+        <p>Powered by SULIT Hotspot Solutions | v1.1.0</p>
          <a href="/admin" className="hover:text-slate-400 transition-colors">Admin Panel</a>
       </footer>
     </div>
