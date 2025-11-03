@@ -101,6 +101,10 @@ if (Gpio && Gpio.accessible) {
     }
 }
 
+// --- Frontend Serving ---
+// Serve static assets from the 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
+
 
 // --- API Routes ---
 
@@ -577,6 +581,13 @@ app.get('/api/admin/portal-html', authMiddleware, (req, res) => res.json({ html:
 app.put('/api/admin/portal-html', authMiddleware, (req, res) => res.json({ message: 'Saved successfully.' }));
 app.post('/api/admin/portal-html/reset', authMiddleware, (req, res) => res.json({ html: `<h1>SULIT WIFI Portal</h1><p>Placeholder</p>` }));
 
+// --- SPA Fallback Route ---
+// This catch-all route must be defined *after* all other API routes.
+// It serves the main index.html file for any non-API GET request,
+// allowing the React frontend to handle routing for pages like /admin.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // --- Server Startup ---
 const startServer = async () => {
