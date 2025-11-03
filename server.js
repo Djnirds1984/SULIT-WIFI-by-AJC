@@ -107,7 +107,10 @@ if (Gpio && Gpio.accessible) {
 app.get('/api/public/settings', async (req, res) => {
     try {
         const ssidSetting = await DB.getSetting('networkSsid');
-        res.json({ ssid: ssidSetting?.value ? JSON.parse(ssidSetting.value) : 'SULIT WIFI' });
+        res.json({
+            ssid: ssidSetting?.value ? JSON.parse(ssidSetting.value) : 'SULIT WIFI',
+            geminiApiKey: process.env.API_KEY || null
+        });
     } catch (error) {
         res.status(500).json({ message: 'Could not load network settings.' });
     }

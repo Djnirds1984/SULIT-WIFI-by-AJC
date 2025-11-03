@@ -7,6 +7,7 @@ export interface Session {
 
 export interface PublicSettings {
     ssid: string;
+    geminiApiKey?: string | null;
 }
 
 export interface AdminStats {

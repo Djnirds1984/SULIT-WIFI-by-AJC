@@ -1,15 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Per guidelines, assume process.env.API_KEY is available and injected.
-const apiKey = process.env.API_KEY;
-if (!apiKey) {
-    console.warn("Gemini API key not found. Wi-Fi Name Generator will be disabled.");
-}
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+let ai: GoogleGenAI | null = null;
+
+export const initializeGeminiClient = (apiKey: string | null | undefined) => {
+    if (apiKey) {
+        ai = new GoogleGenAI({ apiKey });
+    } else {
+        console.warn("Gemini API key not found. Wi-Fi Name Generator will be disabled.");
+        ai = null;
+    }
+};
 
 export const generateWifiName = async (prompt: string): Promise<string> => {
     if (!ai) {
-        throw new Error("Gemini API key is not configured.");
+        throw new Error("Gemini API key is not configured or client not initialized.");
     }
 
     try {

@@ -5,6 +5,7 @@ import Timer from './Timer';
 import ConnectView from './ConnectView';
 import WifiNameGenerator from './WifiNameGenerator';
 import WifiIcon from './icons/WifiIcon';
+import { initializeGeminiClient } from '../services/geminiService';
 
 const PortalView: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
@@ -29,6 +30,7 @@ const PortalView: React.FC = () => {
         try {
             const settings = await getPublicSettings();
             setSsid(settings.ssid);
+            initializeGeminiClient(settings.geminiApiKey);
         } catch (e) {
             console.error("Failed to fetch settings:", e);
         }
