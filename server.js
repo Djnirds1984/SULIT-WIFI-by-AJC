@@ -328,8 +328,7 @@ adminRouter.put('/network-config', async (req, res) => {
         const { hotspotInterface, hotspotIpAddress } = config;
         const configFilePath = `/etc/network/interfaces.d/60-sulit-wifi-hotspot`;
         const configDirPath = path.dirname(configFilePath);
-
-        // FIX: Ensure the configuration directory exists before writing to it.
+        
         fs.mkdirSync(configDirPath, { recursive: true });
 
         const interfaceConfig = `
@@ -341,7 +340,10 @@ iface ${hotspotInterface} inet static
         fs.writeFileSync(configFilePath, interfaceConfig);
         console.log(`[Admin] Wrote interface config to ${configFilePath}`);
         
-        await executeCommand(`sudo ifdown ${hotspotInterface} && sudo ifup ${hotspotInterface}`);
+        // FIX: Implement a more robust command sequence to reconfigure the network interface.
+        // This handles cases where the interface is already up or not configured in /etc/network/interfaces.
+        const reconfigureCommand = `sudo ip addr flush dev ${hotspotInterface} || true; sudo ifdown ${hotspotInterface} || true; sudo ifup ${hotspotInterface}`;
+        await executeCommand(reconfigureCommand);
         console.log(`[Admin] Network interface ${hotspotInterface} reconfigured.`);
         
         console.log(`[Admin] DHCP config updated in DB. System apply logic needed.`);
