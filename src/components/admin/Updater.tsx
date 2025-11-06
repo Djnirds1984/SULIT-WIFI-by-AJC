@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getUpdaterStatus, startUpdate, listBackups, createBackup, restoreBackup, deleteBackup } from '../../services/wifiService';
 import { UpdaterStatus } from '../../types';
@@ -126,29 +127,10 @@ const Updater: React.FC = () => {
 
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold text-gray-700 mb-4">Software Update</h2>
-                {isLoadingStatus ? <p>Checking for updates...</p> : (
-                    status && (
-                        <div className="space-y-4">
-                            <p><strong>Status:</strong> {status.statusText}</p>
-                            <div className="flex flex-col sm:flex-row sm:space-x-8 space-y-2 sm:space-y-0">
-                                <p><strong>Current Version:</strong> <span className="font-mono text-sm bg-gray-100 p-1 rounded">{status.localCommit}</span></p>
-                                {status.remoteCommit && <p><strong>Latest Version:</strong> <span className="font-mono text-sm bg-gray-100 p-1 rounded">{status.remoteCommit}</span></p>}
-                            </div>
-                            {status.isUpdateAvailable ? (
-                                <button
-                                    onClick={handleUpdate}
-                                    disabled={isProcessing}
-                                    className="flex items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed"
-                                >
-                                    <CloudArrowDownIcon className="h-5 w-5 mr-2" />
-                                    {isProcessing ? 'Updating...' : 'Update Now'}
-                                </button>
-                            ) : (
-                                !status.statusText.startsWith('Error') && <p className="text-green-600 font-semibold">You are on the latest version.</p>
-                            )}
-                        </div>
-                    )
-                )}
+                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                     <p className="font-bold text-yellow-800">Feature Not Implemented</p>
+                     <p className="text-yellow-700">The updater is a placeholder and is not yet functional.</p>
+                 </div>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-md">
