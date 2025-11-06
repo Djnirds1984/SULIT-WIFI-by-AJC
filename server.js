@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const express = require('express');
 const { exec } = require('child_process');
@@ -331,12 +330,13 @@ const startServer = async () => {
                         });
                         console.log(`[GPIO] Coin slot initialized on BCM pin ${gpioConfig.coinSlotPin}.`);
                     } catch (err) {
-                        console.error(`[GPIO] Failed to setup coin slot on BCM pin ${gpioConfig.coinSlotPin}:`, err.message);
-                         if (err.code === 'EINVAL' && os.platform() === 'linux') {
+                        console.error(`[GPIO] Failed to setup coin slot on BCM pin ${gpioConfig.coinSlotPin}. Reason: ${err.message}`);
+                         if (os.platform() === 'linux') {
                             console.error('---');
-                            console.error('[GPIO_FIX] This error on Raspberry Pi is common.');
-                            console.error('[GPIO_FIX] SOLUTION: Add "dtoverlay=gpio-sysfs" to /boot/config.txt and reboot.');
-                            console.error('[GPIO_FIX] See the README Troubleshooting section for details.');
+                            console.error('[GPIO_FIX] This error is common on Raspberry Pi / SBCs.');
+                            console.error('[GPIO_FIX] SOLUTION: Ensure the "libgpiod-dev" package is installed.');
+                            console.error('[GPIO_FIX] Run: sudo apt-get install -y libgpiod-dev');
+                            console.error('[GPIO_FIX] See the README Step 1.4 for details.');
                             console.error('---');
                         }
                     }

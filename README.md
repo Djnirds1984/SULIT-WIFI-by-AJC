@@ -1,4 +1,3 @@
-
 # SULIT WIFI Portal on Orange Pi & Raspberry Pi
 
 This guide provides step-by-step instructions for deploying the SULIT WIFI hotspot portal on ARM-based Single Board Computers (SBCs) like the Orange Pi One or Raspberry Pi 3B+/4, running a Debian-based OS like Armbian or Raspberry Pi OS.
@@ -131,7 +130,7 @@ The application requires a PostgreSQL database to store all persistent data.
 The physical coin slot requires the native GPIO module `onoff`. This is an **optional dependency**.
 - If `npm install` shows errors, it's because the required build tools from Step 1 are missing.
 - **The server is designed to run perfectly fine even if this module fails to install**, but the coin slot feature will be automatically disabled.
-- To enable the coin slot, ensure you have installed `build-essential` and `libgpiod-dev` (from Step 1) and then run `npm install` again.
+- **To enable the coin slot, ensure you have installed `build-essential` and `libgpiod-dev` (from Step 1) and then run `npm install` again.**
 
 ### 4.2. Physical Connection
 
@@ -333,7 +332,7 @@ This critical error means the password in your `.env` file does not match the pa
 ### Error: `npm ERR! onoff@... install: node-gyp rebuild`
 This error occurs when installing the optional `onoff` dependency for the coin slot.
 *   **Cause**: Your system is missing the necessary C++ compiler and build tools.
-*   **Solution**: Install the required packages: `sudo apt-get install -y build-essential libgpiod-dev`, then run `npm install` again.
+*   **Solution**: Install the required packages as described in **Step 1.4**: `sudo apt-get install -y build-essential libgpiod-dev`, then run `npm install` again.
 *   **Alternative**: You can ignore this error. The application will run correctly, but the physical coin slot feature will be disabled.
 
 ### Error: `listen EADDRINUSE: address already in use :::3001`
