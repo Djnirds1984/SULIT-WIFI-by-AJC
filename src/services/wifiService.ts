@@ -1,198 +1,201 @@
+import { 
+    Session, 
+    AdminStats, 
+    SystemInfo, 
+    Voucher, 
+    UpdaterStatus, 
+    NetworkInterface, 
+    NetworkConfig, 
+    PortalSettings, 
+    GpioConfig 
+} from '../types';
 
-import { Session, AdminStats, SystemInfo, Voucher, UpdaterStatus, NetworkConfig, NetworkInterface, PortalSettings, GpioConfig } from '../types';
-
-const API_BASE_URL = '/api';
-
-// Helper to handle API responses and parse JSON error messages
-const handleResponse = async (response: Response) => {
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: `HTTP Error ${response.status}: ${response.statusText}` }));
-        throw new Error(errorData.message || 'An unknown error occurred');
-    }
-    // Handle cases where the response might be empty (e.g., a 204 No Content)
-    const text = await response.text();
-    return text ? JSON.parse(text) : {};
+const getAuthToken = (): string | null => {
+    return localStorage.getItem('admin_token');
 };
 
-// Helper for authenticated API calls, ensuring token and headers are set
-const fetchWithAuth = (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('admin_token');
-    const headers = {
+const apiFetch = async (url: string, options: RequestInit = {}) => {
+    const token = getAuthToken();
+    const headers: HeadersInit = {
         'Content-Type': 'application/json',
         ...options.headers,
     };
-     if (token) {
+    if (token) {
         headers['Authorization'] = `Bearer ${token}`;
     }
-    return fetch(url, { ...options, headers });
+
+    try {
+        const response = await fetch(`/api${url}`, { ...options, headers });
+
+        if (!response.ok) {
+            let errorMessage = `Server error: ${response.status} ${response.statusText}`;
+            try {
+                const errorJson = await response.json();
+                errorMessage = errorJson.error || errorJson.message || errorMessage;
+            } catch (e) {
+                // Not a JSON response
+            }
+            throw new Error(errorMessage);
+        }
+
+        if (response.status === 204 || response.headers.get('content-length') === '0') {
+            return null; // Return null for empty responses
+        }
+        
+        return response.json();
+    } catch (error) {
+        // Handle network errors or other fetch-related issues
+        if (error instanceof Error) {
+             throw new Error(error.message || 'A network error occurred.');
+        }
+        throw new Error('An unknown error occurred.');
+    }
 };
 
-// --- Public Routes ---
+// --- Public/Portal Routes ---
 
 export const getCurrentSession = (): Promise<Session> => {
-    return fetch(`${API_BASE_URL}/session`).then(handleResponse);
+    return apiFetch('/session');
 };
 
-export const logout = (): Promise<{ message: string }> => {
-    return fetch(`${API_BASE_URL}/logout`, { method: 'POST' }).then(handleResponse);
+export const logout = (): Promise<void> => {
+    return apiFetch('/logout', { method: 'POST' });
 };
 
-export const getPublicSettings = (): Promise<{ ssid: string }> => {
-    return fetch(`${API_BASE_URL}/settings/public`).then(handleResponse);
+export const getPublicSettings = (): Promise<{ ssid: string, coinSlotEnabled: boolean }> => {
+    return apiFetch('/settings/public');
 };
 
 export const activateVoucher = (code: string): Promise<Session> => {
-    return fetch(`${API_BASE_URL}/voucher/activate`, {
+    return apiFetch('/connect/voucher', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
-    }).then(handleResponse);
+    });
 };
 
 export const activateCoinSession = (): Promise<Session> => {
-    return fetch(`${API_BASE_URL}/session/coin`, { method: 'POST' }).then(handleResponse);
+    return apiFetch('/connect/coin', { method: 'POST' });
 };
 
-// --- Admin Auth ---
-
 export const loginAdmin = async (password: string): Promise<string> => {
-    const response = await fetch(`${API_BASE_URL}/admin/login`, {
+    const data = await apiFetch('/admin/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
     });
-    const data = await handleResponse(response);
     return data.token;
 };
 
+
 // --- Admin Routes ---
 
+// Dashboard
 export const getAdminStats = (): Promise<AdminStats> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/stats`).then(handleResponse);
+    return apiFetch('/admin/stats');
 };
 
 export const getSystemInfo = (): Promise<SystemInfo> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/system-info`).then(handleResponse);
+    return apiFetch('/admin/system-info');
 };
 
+// Vouchers
 export const getVouchers = (): Promise<Voucher[]> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/vouchers`).then(handleResponse);
+    return apiFetch('/admin/vouchers');
 };
 
-export const createVoucher = (duration: number): Promise<Voucher> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/vouchers`, {
+export const createVoucher = (durationSeconds: number): Promise<Voucher> => {
+    return apiFetch('/admin/vouchers', {
         method: 'POST',
-        body: JSON.stringify({ duration }),
-    }).then(handleResponse);
+        body: JSON.stringify({ duration: durationSeconds }),
+    });
 };
 
-export const getUpdaterStatus = (): Promise<UpdaterStatus> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/updater/status`).then(handleResponse);
-};
-
-export const startUpdate = (): Promise<{ message: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/updater/start`, { method: 'POST' }).then(handleResponse);
-};
-
-export const listBackups = (): Promise<string[]> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/backups`).then(handleResponse);
-};
-
-export const createBackup = (): Promise<{ message: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/backups`, { method: 'POST' }).then(handleResponse);
-};
-
-export const restoreBackup = (filename: string): Promise<{ message: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/backups/restore`, {
-        method: 'POST',
-        body: JSON.stringify({ filename }),
-    }).then(handleResponse);
-};
-
-export const deleteBackup = (filename: string): Promise<{ message: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/backups`, {
-        method: 'DELETE',
-        body: JSON.stringify({ filename }),
-    }).then(handleResponse);
-};
-
-export const getNetworkConfig = (): Promise<NetworkConfig> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/network/config`).then(handleResponse);
-};
-
-export const updateNetworkConfig = (config: NetworkConfig): Promise<{ message: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/network/config`, {
-        method: 'POST',
-        body: JSON.stringify(config),
-    }).then(handleResponse);
-};
-
-export const getNetworkInfo = (): Promise<NetworkInterface[]> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/network/info`).then(handleResponse);
-};
-
-export const getWanInfo = (): Promise<{ name: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/network/wan`).then(handleResponse);
-};
-
+// Settings
 export const getSettings = (): Promise<PortalSettings> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/settings`).then(handleResponse);
+    return apiFetch('/admin/settings/portal');
 };
 
 export const updateSettings = (settings: PortalSettings): Promise<{ message: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/settings`, {
+    return apiFetch('/admin/settings/portal', {
         method: 'POST',
         body: JSON.stringify(settings),
-    }).then(handleResponse);
+    });
 };
 
 export const getGpioConfig = (): Promise<GpioConfig> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/gpio/config`).then(handleResponse);
+    return apiFetch('/admin/settings/gpio');
 };
 
 export const updateGpioConfig = (config: GpioConfig): Promise<{ message: string }> => {
-    return fetchWithAuth(`${API_BASE_URL}/admin/gpio/config`, {
+    return apiFetch('/admin/settings/gpio', {
         method: 'POST',
         body: JSON.stringify(config),
-    }).then(handleResponse);
+    });
 };
 
-// FIX: Add placeholder functions for the portal editor to resolve import errors.
-// --- Admin Portal Editor (Placeholders since feature is not implemented on backend) ---
+// Updater & Backup
+export const getUpdaterStatus = (): Promise<UpdaterStatus> => {
+    return apiFetch('/admin/updater/status');
+};
 
-const DEFAULT_PORTAL_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to SULIT WIFI</title>
-    <style>
-        body { font-family: sans-serif; text-align: center; padding-top: 50px; }
-    </style>
-</head>
-<body>
-    <h1>Welcome to SULIT WIFI</h1>
-    <p>This is the default portal page content.</p>
-    <p>To connect, please use a voucher or insert a coin.</p>
-</body>
-</html>`;
+export const startUpdate = (): Promise<{ message: string }> => {
+    return apiFetch('/admin/updater/start', { method: 'POST' });
+};
 
+export const listBackups = (): Promise<string[]> => {
+    return apiFetch('/admin/backups');
+};
+
+export const createBackup = (): Promise<{ message: string }> => {
+    return apiFetch('/admin/backups', { method: 'POST' });
+};
+
+export const restoreBackup = (filename: string): Promise<{ message: string }> => {
+    return apiFetch('/admin/backups/restore', {
+        method: 'POST',
+        body: JSON.stringify({ filename }),
+    });
+};
+
+export const deleteBackup = (filename: string): Promise<{ message: string }> => {
+    return apiFetch(`/admin/backups`, { 
+        method: 'DELETE',
+        body: JSON.stringify({ filename }),
+    });
+};
+
+// Network
+export const getNetworkConfig = (): Promise<NetworkConfig> => {
+    return apiFetch('/admin/network/config');
+};
+
+export const updateNetworkConfig = (config: NetworkConfig): Promise<{ message: string }> => {
+    return apiFetch('/admin/network/config', {
+        method: 'POST',
+        body: JSON.stringify(config),
+    });
+};
+
+export const getNetworkInfo = (): Promise<NetworkInterface[]> => {
+    return apiFetch('/admin/network/info');
+};
+
+export const getWanInfo = (): Promise<{ name: string }> => {
+    return apiFetch('/admin/network/wan');
+};
+
+
+// Portal Editor
 export const getPortalHtml = (): Promise<{ html: string }> => {
-    console.warn('getPortalHtml is a placeholder and does not fetch from the server.');
-    // Simulate network delay
-    return new Promise(resolve => setTimeout(() => resolve({ html: DEFAULT_PORTAL_HTML }), 500));
+    return apiFetch('/admin/portal/html');
 };
 
 export const updatePortalHtml = (html: string): Promise<{ message: string }> => {
-    console.warn('updatePortalHtml is a placeholder and does not save to the server.');
-    // In a real implementation, you would send the 'html' string to the server
-    return new Promise(resolve => setTimeout(() => {
-        console.log('Simulated save:', html);
-        resolve({ message: 'Portal HTML updated successfully (simulation).' });
-    }, 500));
+    return apiFetch('/admin/portal/html', {
+        method: 'POST',
+        body: JSON.stringify({ html }),
+    });
 };
 
-export const resetPortalHtml = (): Promise<{ html: string }> => {
-    console.warn('resetPortalHtml is a placeholder and does not communicate with the server.');
-    return new Promise(resolve => setTimeout(() => resolve({ html: DEFAULT_PORTAL_HTML }), 500));
+export const resetPortalHtml = (): Promise<{ html: string; message: string }> => {
+    return apiFetch('/admin/portal/reset', { method: 'POST' });
 };
