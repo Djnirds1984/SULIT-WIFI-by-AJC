@@ -1,3 +1,4 @@
+
 export interface Session {
     remainingTime: number;
 }
@@ -54,6 +55,12 @@ export interface NetworkConfig {
         end: string;
         lease: string;
     };
+}
+
+export interface GpioConfig {
+    coinSlotPin: number | null;
+    relayPin: number | null;
+    statusLightPin: number | null;
 }
 
 // FIX: Removed geminiApiKey as per guideline to use environment variables.

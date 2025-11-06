@@ -1,4 +1,5 @@
-import { Session, AdminStats, SystemInfo, Voucher, UpdaterStatus, NetworkConfig, NetworkInterface, Settings } from '../types';
+
+import { Session, AdminStats, SystemInfo, Voucher, UpdaterStatus, NetworkConfig, NetworkInterface, Settings, GpioConfig } from '../types';
 
 const API_BASE_URL = '/api';
 
@@ -151,5 +152,16 @@ export const updateSettings = (settings: Settings): Promise<{ message: string }>
     return fetchWithAuth(`${API_BASE_URL}/admin/settings`, {
         method: 'POST',
         body: JSON.stringify(settings),
+    }).then(handleResponse);
+};
+
+export const getGpioConfig = (): Promise<GpioConfig> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/gpio/config`).then(handleResponse);
+};
+
+export const updateGpioConfig = (config: GpioConfig): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/gpio/config`, {
+        method: 'POST',
+        body: JSON.stringify(config),
     }).then(handleResponse);
 };

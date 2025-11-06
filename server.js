@@ -315,18 +315,30 @@ const startServer = async () => {
                     try {
                         const coinSlotPin = new Gpio(gpioConfig.coinSlotPin, 'in', 'falling', { debounceTimeout: 20 });
                         activePins.push(coinSlotPin);
-                        coinSlotPin.watch((err, value) => {
+                        coinSlotPin.watch(async (err, value) => {
                             if (err) {
                                 console.error('[GPIO] Error watching coin slot pin:', err);
                                 return;
                             }
                              // value is 0 on falling edge
                             console.log('[GPIO] Coin detected!');
-                             // Handle coin drop logic here (e.g., websockets to clients)
+                            try {
+                                const voucher = await db.createVoucher(15 * 60); // 15 minutes
+                                console.log(`[Voucher] Coin drop generated new 15-min voucher: ${voucher.code}`);
+                            } catch (dbErr) {
+                                console.error('[GPIO] Failed to create voucher on coin drop:', dbErr);
+                            }
                         });
                         console.log(`[GPIO] Coin slot initialized on BCM pin ${gpioConfig.coinSlotPin}.`);
                     } catch (err) {
                         console.error(`[GPIO] Failed to setup coin slot on BCM pin ${gpioConfig.coinSlotPin}:`, err.message);
+                         if (err.code === 'EINVAL' && os.platform() === 'linux') {
+                            console.error('---');
+                            console.error('[GPIO_FIX] This error on Raspberry Pi is common.');
+                            console.error('[GPIO_FIX] SOLUTION: Add "dtoverlay=gpio-sysfs" to /boot/config.txt and reboot.');
+                            console.error('[GPIO_FIX] See the README Troubleshooting section for details.');
+                            console.error('---');
+                        }
                     }
                 }
 
