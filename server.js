@@ -124,7 +124,6 @@ app.get('/api/public/settings', async (req, res) => {
     try {
         const ssidSetting = await DB.getSetting('networkSsid');
         res.json({
-            // FIX: The value is already parsed by the DB driver.
             ssid: ssidSetting?.value ?? 'SULIT WIFI',
             geminiApiKey: process.env.API_KEY || null
         });
@@ -329,7 +328,6 @@ app.post('/api/admin/vouchers', authMiddleware, async (req, res) => {
 app.get('/api/admin/settings', authMiddleware, async (req, res) => {
     try {
         const ssidSetting = await DB.getSetting('networkSsid');
-        // FIX: The value is already parsed by the DB driver.
         res.json({ ssid: ssidSetting?.value ?? 'SULIT WIFI' });
     } catch (error) {
         res.status(500).json({ message: 'Failed to load settings.' });
@@ -353,7 +351,6 @@ app.get('/api/admin/network-config', authMiddleware, async(req, res) => {
     try {
         const setting = await DB.getSetting('networkConfig');
         if (setting && setting.value) {
-            // FIX: The value is already parsed by the DB driver.
             res.json(setting.value);
         } else {
             // If setting is not found, return a default configuration.
@@ -620,6 +617,10 @@ const startServer = async () => {
                     console.error('[Reason] Authentication failed. The password in your .env file is likely incorrect.');
                     console.error('[Action] 1. Double-check PGPASSWORD in the .env file.');
                     console.error('[Action] 2. If you have forgotten the password, reset it. See the Troubleshooting section in README.md for instructions.\n');
+                } else if (error.code === '3D000') { // Database does not exist
+                    console.error(`[Reason] The database "${process.env.PGDATABASE || 'sulitwifi'}" does not exist.`);
+                    console.error('[Action] 1. Connect to psql with `sudo -u postgres psql`.');
+                    console.error('[Action] 2. Run `CREATE DATABASE sulitwifi;` and `ALTER DATABASE sulitwifi OWNER TO sulituser;`.');
                 } else if (error.code === 'ECONNREFUSED') {
                     console.error('[Reason] Connection refused. Is the PostgreSQL server running and listening on port 5432?\n');
                 } else {
@@ -654,7 +655,7 @@ const startServer = async () => {
         console.error('\n[FATAL] A critical error occurred during startup after DB connection:');
         if (error.code === '42501') { // PostgreSQL permission denied
             console.error('[DB] The database user does not have permission. Please run:');
-            console.error(`[DB] "ALTER DATABASE ${process.env.PGDATABASE} OWNER TO ${process.env.PGUSER};" in psql.\n`);
+            console.error(`[DB] "ALTER DATABASE ${process.env.PGDATABASE || 'sulitwifi'} OWNER TO ${process.env.PGUSER || 'sulituser'};" in psql.\n`);
         } else {
              console.error('[Details]:', error);
         }

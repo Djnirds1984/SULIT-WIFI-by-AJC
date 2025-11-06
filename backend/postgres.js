@@ -2,14 +2,14 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 
+// This robust configuration provides sensible defaults that match the README setup guide,
+// preventing connection errors if the user only sets the password in their .env file.
 const pool = new Pool({
-  user: process.env.PGUSER,
-  host: process.env.PGHOST,
-  database: process.env.PGDATABASE,
+  user: process.env.PGUSER || 'sulituser',
+  host: process.env.PGHOST || 'localhost',
+  database: process.env.PGDATABASE || 'sulitwifi',
   password: process.env.PGPASSWORD,
-  port: process.env.PGPORT,
-  // FIX: Add timeouts to make the connection pool more resilient.
-  // This prevents errors from stale connections, especially for the dashboard.
+  port: parseInt(process.env.PGPORT || '5432', 10),
   idleTimeoutMillis: 10000, // Close idle clients after 10 seconds.
   connectionTimeoutMillis: 5000, // Return an error if connection takes > 5 seconds.
 });
@@ -98,7 +98,7 @@ const seedInitialData = async () => {
 
     const ssidRes = await query("SELECT * FROM settings WHERE key = 'networkSsid'");
     if (ssidRes.rowCount === 0) {
-        await query("INSERT INTO settings (key, value) VALUES ('networkSsid', $1)", [JSON.stringify('SULIT WIFI')]);
+        await query("INSERT INTO settings (key, value) VALUES ('networkSsid', $1)", ['"SULIT WIFI"']);
     }
     
     const netConfigRes = await query("SELECT * FROM settings WHERE key = 'networkConfig'");
@@ -213,7 +213,11 @@ const getAdminUser = async () => {
 
 const getSetting = async (key) => {
     const res = await query("SELECT value FROM settings WHERE key = $1", [key]);
-    return res.rows[0];
+    if (res.rows[0]) {
+        // The value is stored as JSONB, which the pg driver automatically parses.
+        return { value: res.rows[0].value };
+    }
+    return null;
 };
 
 const updateSetting = async (key, value) => {
