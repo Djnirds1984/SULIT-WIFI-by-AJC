@@ -51,9 +51,9 @@ This application creates a captive portal for a Wi-Fi hotspot, running on a sing
     ```bash
     sudo apt-get update && sudo apt-get upgrade -y
     ```
-4.  **Install Build Tools**: **(CRITICAL)** This is required for multiple components, including the coin slot and Nodogsplash.
+4.  **Install Build Tools & GPIO Library**: **(CRITICAL)** This is required for multiple components. `libgpiod-dev` is the modern library needed for the coin slot to function correctly.
     ```bash
-    sudo apt-get install -y build-essential
+    sudo apt-get install -y build-essential libgpiod-dev
     ```
 5.  **Install Node.js & Git**:
     ```bash
@@ -120,7 +120,7 @@ The application requires a PostgreSQL database to store all persistent data.
     ```bash
     npm install
     ```
-    > **Note:** You may see errors related to `rpi-gpio` during this step. This is expected if you haven't installed `build-essential` yet. The installation will still complete successfully, but the coin slot feature will be disabled. See Step 4 for details.
+    > **Note:** You may see errors related to `onoff` during this step. This is expected if you haven't installed the build tools from Step 1. The installation will still complete successfully, but the coin slot feature will be disabled.
 
 ---
 
@@ -128,10 +128,10 @@ The application requires a PostgreSQL database to store all persistent data.
 
 ### 4.1. IMPORTANT: GPIO Module Installation
 
-The physical coin slot requires a native GPIO module (`rpi-gpio`). This is an **optional dependency**.
-- If `npm install` shows errors related to this module, it's likely because the required build tools are missing.
+The physical coin slot requires the native GPIO module `onoff`. This is an **optional dependency**.
+- If `npm install` shows errors, it's because the required build tools from Step 1 are missing.
 - **The server is designed to run perfectly fine even if this module fails to install**, but the coin slot feature will be automatically disabled.
-- To enable the coin slot, ensure you have installed the build tools from Step 1 (`sudo apt-get install -y build-essential`) and then run `npm install` again.
+- To enable the coin slot, ensure you have installed `build-essential` and `libgpiod-dev` (from Step 1) and then run `npm install` again.
 
 ### 4.2. Physical Connection
 
@@ -302,24 +302,6 @@ With the Nginx configuration, the admin panel is accessible on port `80` from an
 
 ## Troubleshooting
 
-### CRITICAL FIX for Raspberry Pi GPIO: Error `EINVAL: invalid argument, write`
-This is a common hardware initialization error on modern Raspberry Pi OS versions.
-*   **Cause**: The operating system has disabled the legacy GPIO interface that many Node.js libraries rely on.
-*   **Solution**: You must re-enable this interface.
-    1.  Open the boot configuration file for editing:
-        ```bash
-        sudo nano /boot/config.txt
-        ```
-    2.  Add this exact line to the very bottom of the file:
-        ```
-        dtoverlay=gpio-sysfs
-        ```
-    3.  Save the file by pressing `CTRL+X`, then `Y`, then `Enter`.
-    4.  **A reboot is required for this change to take effect**:
-        ```bash
-        sudo reboot
-        ```
-
 ### Error: `FATAL: The PGPASSWORD environment variable is not set.`
 This is the most common setup error.
 *   **Cause**: The application started but could not find the database password. This means the `.env` file is either missing, named incorrectly, or does not contain the `PGPASSWORD` line.
@@ -348,10 +330,10 @@ This critical error means the password in your `.env` file does not match the pa
     4.  Update your `.env` file with the `new_secure_password`.
     5.  Restart the application to apply the changes: `pm2 restart sulit-wifi`.
 
-### Error: `npm ERR! rpi-gpio@... install: node-gyp rebuild`
-This error occurs when installing the optional `rpi-gpio` dependency for the coin slot.
+### Error: `npm ERR! onoff@... install: node-gyp rebuild`
+This error occurs when installing the optional `onoff` dependency for the coin slot.
 *   **Cause**: Your system is missing the necessary C++ compiler and build tools.
-*   **Solution**: Install the `build-essential` package: `sudo apt-get install -y build-essential`, then run `npm install` again.
+*   **Solution**: Install the required packages: `sudo apt-get install -y build-essential libgpiod-dev`, then run `npm install` again.
 *   **Alternative**: You can ignore this error. The application will run correctly, but the physical coin slot feature will be disabled.
 
 ### Error: `listen EADDRINUSE: address already in use :::3001`

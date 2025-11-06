@@ -19,16 +19,15 @@ if (!process.env.PGPASSWORD) {
 const JWT_SECRET = process.env.JWT_SECRET || 'default_super_secret_key_for_dev';
 
 // --- GPIO SETUP ---
-let gpio;
-const GPIO_DEBOUNCE_MS = 50;
-let lastCoinDropTime = 0;
-
+let Gpio;
 try {
-    gpio = require('rpi-gpio');
+    Gpio = require('onoff').Gpio;
 } catch (err) {
-    gpio = null;
-    console.log('[Portal] GPIO module not found or failed to load. Running in dev mode (no coin slot/relay/light).');
+    Gpio = null;
+    console.log('[Portal] GPIO module (`onoff`) not found. Running in dev mode (no coin slot/relay/light).');
 }
+
+const activePins = []; // Keep track of pins to unexport on exit
 
 // --- UTILITY FUNCTIONS ---
 const runCommand = (command) => {
@@ -49,8 +48,6 @@ const getClientIp = (req) => {
 
 // --- NODOGSPLASH (NDS) UTILS ---
 const ndsctl = async (action, clientIp) => {
-    // Note: Use the MAC address from ndsctl status in a real implementation
-    // For simplicity, we'll use IP, which works for basic cases.
     try {
         const stdout = await runCommand(`sudo /usr/bin/ndsctl ${action} ${clientIp}`);
         return stdout;
@@ -309,56 +306,52 @@ const startServer = async () => {
         console.log('[DB] Database connection successful.');
         await db.initializeDatabase();
 
-        // Initialize GPIO pins if configured
-        if (gpio) {
+        // Initialize GPIO pins if available and configured
+        if (Gpio) {
             const gpioConfig = await db.getSetting('gpioConfig');
             if (gpioConfig) {
-                gpio.setMode(gpio.MODE_BCM);
-
-                // Setup Coin Slot
+                 // Setup Coin Slot
                 if (gpioConfig.coinSlotPin) {
-                    const coinPin = gpioConfig.coinSlotPin;
-                    gpio.setup(coinPin, gpio.DIR_IN, gpio.EDGE_FALLING, (err) => {
-                        if (err) {
-                            console.error(`[GPIO] Failed to setup coin slot pin ${coinPin}`, err);
-                            if (err.code === 'EINVAL') {
-                                console.error('---');
-                                console.error('[GPIO_FIX] This error on Raspberry Pi is common.');
-                                console.error('[GPIO_FIX] SOLUTION: Add "dtoverlay=gpio-sysfs" to /boot/config.txt and reboot.');
-                                console.error('[GPIO_FIX] See the README Troubleshooting section for details.');
-                                console.error('---');
+                    try {
+                        const coinSlotPin = new Gpio(gpioConfig.coinSlotPin, 'in', 'falling', { debounceTimeout: 20 });
+                        activePins.push(coinSlotPin);
+                        coinSlotPin.watch((err, value) => {
+                            if (err) {
+                                console.error('[GPIO] Error watching coin slot pin:', err);
+                                return;
                             }
-                            return;
-                        }
-                        console.log(`[GPIO] Coin slot initialized on BCM pin ${coinPin}.`);
-                        gpio.on('change', (channel, value) => {
-                            const now = Date.now();
-                            if (channel === coinPin && !value && (now - lastCoinDropTime > GPIO_DEBOUNCE_MS)) {
-                                lastCoinDropTime = now;
-                                console.log('[GPIO] Coin detected!');
-                                // Here you would typically use websockets to notify the frontend
-                                // or handle credit logic. For now, we just log it.
-                            }
+                             // value is 0 on falling edge
+                            console.log('[GPIO] Coin detected!');
+                             // Handle coin drop logic here (e.g., websockets to clients)
                         });
-                    });
+                        console.log(`[GPIO] Coin slot initialized on BCM pin ${gpioConfig.coinSlotPin}.`);
+                    } catch (err) {
+                        console.error(`[GPIO] Failed to setup coin slot on BCM pin ${gpioConfig.coinSlotPin}:`, err.message);
+                    }
                 }
 
                 // Setup Relay
                 if (gpioConfig.relayPin) {
-                    const relayPin = gpioConfig.relayPin;
-                    gpio.setup(relayPin, gpio.DIR_HIGH, (err) => {
-                        if (err) return console.error(`[GPIO] Failed to setup relay pin ${relayPin}`, err);
-                        console.log(`[GPIO] Relay activated on BCM pin ${relayPin}.`);
-                    });
+                     try {
+                        const relayPin = new Gpio(gpioConfig.relayPin, 'out');
+                        activePins.push(relayPin);
+                        relayPin.writeSync(1); // Turn on relay
+                        console.log(`[GPIO] Relay activated on BCM pin ${gpioConfig.relayPin}.`);
+                    } catch (err) {
+                        console.error(`[GPIO] Failed to setup relay on BCM pin ${gpioConfig.relayPin}:`, err.message);
+                    }
                 }
 
                 // Setup Status Light
                 if (gpioConfig.statusLightPin) {
-                    const lightPin = gpioConfig.statusLightPin;
-                    gpio.setup(lightPin, gpio.DIR_HIGH, (err) => {
-                        if (err) return console.error(`[GPIO] Failed to setup status light pin ${lightPin}`, err);
-                        console.log(`[GPIO] Status light ON for BCM pin ${lightPin}.`);
-                    });
+                    try {
+                        const statusLightPin = new Gpio(gpioConfig.statusLightPin, 'out');
+                        activePins.push(statusLightPin);
+                        statusLightPin.writeSync(1); // Turn on light
+                        console.log(`[GPIO] Status light ON for BCM pin ${gpioConfig.statusLightPin}.`);
+                    } catch (err) {
+                        console.error(`[GPIO] Failed to setup status light on BCM pin ${gpioConfig.statusLightPin}:`, err.message);
+                    }
                 }
             }
         }
@@ -374,3 +367,10 @@ const startServer = async () => {
 };
 
 startServer();
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('[Portal] Shutting down...');
+    activePins.forEach(pin => pin.unexport());
+    process.exit(0);
+});
