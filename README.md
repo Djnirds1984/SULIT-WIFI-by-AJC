@@ -1,3 +1,4 @@
+
 # SULIT WIFI Portal on Orange Pi & Raspberry Pi
 
 This guide provides step-by-step instructions for deploying the SULIT WIFI hotspot portal on ARM-based Single Board Computers (SBCs) like the Orange Pi One or Raspberry Pi 3B+/4, running a Debian-based OS like Armbian or Raspberry Pi OS.
@@ -136,9 +137,9 @@ The physical coin slot requires a native GPIO module (`rpi-gpio`). This is an **
 
 *   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
 *   Connect its **VCC** wire to a 5V pin.
-*   Connect its **Signal** wire to **GPIO7**.
-    *   **Note**: The server uses **BCM pin numbering**. On a Raspberry Pi, GPIO7 is physical pin 26 on the header.
-    *   If you use a different pin, update the `COIN_SLOT_GPIO_PIN` variable in `server.js`.
+*   Connect its **Signal** wire to the pin you configure in the Admin Panel (`System` > `GPIO Pin Configuration`).
+    *   **Note**: The server uses **BCM pin numbering**. The default is **GPIO2** (physical pin 3).
+    *   Check your Raspberry Pi's pinout diagram to identify the correct physical pin.
 
 ### 4.3. Permissions
 
@@ -300,6 +301,24 @@ With the Nginx configuration, the admin panel is accessible on port `80` from an
 ---
 
 ## Troubleshooting
+
+### CRITICAL FIX for Raspberry Pi GPIO: Error `EINVAL: invalid argument, write`
+This is a common hardware initialization error on modern Raspberry Pi OS versions.
+*   **Cause**: The operating system has disabled the legacy GPIO interface that many Node.js libraries rely on.
+*   **Solution**: You must re-enable this interface.
+    1.  Open the boot configuration file for editing:
+        ```bash
+        sudo nano /boot/config.txt
+        ```
+    2.  Add this exact line to the very bottom of the file:
+        ```
+        dtoverlay=gpio-sysfs
+        ```
+    3.  Save the file by pressing `CTRL+X`, then `Y`, then `Enter`.
+    4.  **A reboot is required for this change to take effect**:
+        ```bash
+        sudo reboot
+        ```
 
 ### Error: `FATAL: The PGPASSWORD environment variable is not set.`
 This is the most common setup error.

@@ -319,7 +319,17 @@ const startServer = async () => {
                 if (gpioConfig.coinSlotPin) {
                     const coinPin = gpioConfig.coinSlotPin;
                     gpio.setup(coinPin, gpio.DIR_IN, gpio.EDGE_FALLING, (err) => {
-                        if (err) return console.error(`[GPIO] Failed to setup coin slot pin ${coinPin}`, err);
+                        if (err) {
+                            console.error(`[GPIO] Failed to setup coin slot pin ${coinPin}`, err);
+                            if (err.code === 'EINVAL') {
+                                console.error('---');
+                                console.error('[GPIO_FIX] This error on Raspberry Pi is common.');
+                                console.error('[GPIO_FIX] SOLUTION: Add "dtoverlay=gpio-sysfs" to /boot/config.txt and reboot.');
+                                console.error('[GPIO_FIX] See the README Troubleshooting section for details.');
+                                console.error('---');
+                            }
+                            return;
+                        }
                         console.log(`[GPIO] Coin slot initialized on BCM pin ${coinPin}.`);
                         gpio.on('change', (channel, value) => {
                             const now = Date.now();

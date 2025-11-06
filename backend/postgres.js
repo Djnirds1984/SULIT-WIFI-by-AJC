@@ -42,7 +42,6 @@ const checkConnection = async () => {
 
 const initializeDatabase = async () => {
     // --- Initial Schema Creation ---
-    // This runs for new installations to define the ideal schema.
     await query(`
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -63,17 +62,17 @@ const initializeDatabase = async () => {
     `);
     
     // --- Schema Migrations ---
-    // This section patches older database schemas without losing data.
-    // It's safe to run on every startup, even on new installations.
+    // This section safely patches older database schemas without losing data.
     try {
         console.log('[DB] Applying necessary database schema updates...');
         await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;');
         await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
         await query('ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
+        // FIX: This was the missing migration that caused the "is_used" column error.
+        await query('ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS is_used BOOLEAN DEFAULT FALSE;');
         console.log('[DB] Schema updates applied successfully.');
     } catch (err) {
         console.error('[DB] Could not apply schema updates. This might happen if the database user lacks ALTER permissions.', err);
-        // The server will continue, but may fail if the schema is out of date.
     }
     
     // Seed default settings if they don't exist
@@ -88,7 +87,7 @@ const initializeDatabase = async () => {
             hotspotDhcpServer: { enabled: true, start: '192.168.10.100', end: '192.168.10.200', lease: '12h' }
         },
         gpioConfig: {
-            coinSlotPin: 7,
+            coinSlotPin: 2, // User requested default
             relayPin: null,
             statusLightPin: null
         }
