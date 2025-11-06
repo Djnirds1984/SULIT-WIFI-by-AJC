@@ -41,6 +41,8 @@ const checkConnection = async () => {
 };
 
 const initializeDatabase = async () => {
+    // --- Initial Schema Creation ---
+    // This runs for new installations to define the ideal schema.
     await query(`
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -55,9 +57,24 @@ const initializeDatabase = async () => {
         CREATE TABLE IF NOT EXISTS sessions (
             ip_address TEXT PRIMARY KEY,
             expires_at TIMESTAMPTZ NOT NULL,
-            voucher_code TEXT REFERENCES vouchers(code)
+            voucher_code TEXT REFERENCES vouchers(code),
+            created_at TIMESTAMPTZ DEFAULT NOW()
         );
     `);
+    
+    // --- Schema Migrations ---
+    // This section patches older database schemas without losing data.
+    // It's safe to run on every startup, even on new installations.
+    try {
+        console.log('[DB] Applying necessary database schema updates...');
+        await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;');
+        await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
+        await query('ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
+        console.log('[DB] Schema updates applied successfully.');
+    } catch (err) {
+        console.error('[DB] Could not apply schema updates. This might happen if the database user lacks ALTER permissions.', err);
+        // The server will continue, but may fail if the schema is out of date.
+    }
     
     // Seed default settings if they don't exist
     const defaultSettings = {
