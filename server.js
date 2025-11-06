@@ -616,8 +616,10 @@ const startServer = async () => {
             if (i === DB_CONNECT_RETRIES) {
                 // Last attempt failed, show detailed error and exit
                 console.error('\n[FATAL] Could not connect to the database after multiple retries.');
-                if (error.code === '28P01') {
-                    console.error('[Reason] Authentication failed. Please check the PGPASSWORD in your .env file.\n');
+                if (error.code === '28P01') { // PostgreSQL password authentication failed
+                    console.error('[Reason] Authentication failed. The password in your .env file is likely incorrect.');
+                    console.error('[Action] 1. Double-check PGPASSWORD in the .env file.');
+                    console.error('[Action] 2. If you have forgotten the password, reset it. See the Troubleshooting section in README.md for instructions.\n');
                 } else if (error.code === 'ECONNREFUSED') {
                     console.error('[Reason] Connection refused. Is the PostgreSQL server running and listening on port 5432?\n');
                 } else {

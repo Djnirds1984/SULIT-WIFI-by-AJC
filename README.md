@@ -311,6 +311,22 @@ This is the most common setup error.
     5.  Make sure the line `PGPASSWORD=your_secure_password_here` is present and that you have replaced the placeholder with your actual password.
     6.  Restart the application: `pm2 restart sulit-wifi`.
 
+### Error: `password authentication failed for user "sulituser"` or `Authentication failed`
+This critical error means the password in your `.env` file does not match the password in the PostgreSQL database for the `sulituser`.
+
+*   **Cause**: A typo in the `.env` file or you've forgotten the password you set during Step 2.
+*   **Solution**: Reset the password in the database.
+    1.  Open the PostgreSQL administrative shell:
+        ```bash
+        sudo -u postgres psql
+        ```
+    2.  Inside the `psql` shell, run the following command to set a new password. **Replace `new_secure_password` with your desired password**:
+        ```sql
+        ALTER USER sulituser WITH PASSWORD 'new_secure_password';
+        ```
+    3.  Exit the `psql` shell by typing `\q` and pressing Enter.
+    4.  Update your `.env` file with the `new_secure_password`.
+    5.  Restart the application to apply the changes: `pm2 restart sulit-wifi`.
 
 ### Error: `npm ERR! epoll@... install: node-gyp rebuild`
 This error occurs when installing the optional `onoff` dependency for the coin slot.
@@ -320,9 +336,6 @@ This error occurs when installing the optional `onoff` dependency for the coin s
 
 ### Error: `listen EADDRINUSE: address already in use :::3001`
 Another process is using port 3001. Find it with `sudo lsof -i :3001`, note the PID, and stop it with `sudo kill -9 <PID>`. Then restart the app.
-
-### Error: `error: password authentication failed for user "sulituser"`
-The password in your `.env` file is incorrect. Double-check it. If forgotten, reset it in `psql`: `ALTER USER sulituser WITH PASSWORD 'new_password';`
 
 ### Error: `error: permission denied for schema public`
 The `sulituser` does not have ownership of the database. Fix this in `psql` with: `ALTER DATABASE sulitwifi OWNER TO sulituser;` then restart the app.
