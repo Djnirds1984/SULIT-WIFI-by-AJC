@@ -50,7 +50,7 @@ This application creates a captive portal for a Wi-Fi hotspot, running on a sing
     ```bash
     sudo apt-get update && sudo apt-get upgrade -y
     ```
-4.  **Install Build Tools**: **(CRITICAL for Coin Slot & Nodogsplash)** This is required for multiple components.
+4.  **Install Build Tools**: **(CRITICAL)** This is required for multiple components, including the coin slot and Nodogsplash.
     ```bash
     sudo apt-get install -y build-essential
     ```
@@ -165,22 +165,27 @@ sudo apt-get install -y nginx ifupdown
 
 The `nodogsplash` package is often not available in default OS repositories. The most reliable way to install it is by compiling it from source.
 
-1.  **Install Build Dependency**:
+1.  **Install Build Dependencies**:
+    The `make` command and other tools are required to compile the software. Install them along with the Nodogsplash library dependency.
     ```bash
-    sudo apt-get install -y libmicrohttpd-dev
+    sudo apt-get update
+    sudo apt-get install -y build-essential libmicrohttpd-dev
     ```
+
 2.  **Clone the Official Repository**:
     ```bash
     # IMPORTANT: Run this from your home directory (~), NOT from the sulit-wifi-portal directory.
     cd ~ 
     git clone https://github.com/nodogsplash/nodogsplash.git
     ```
+
 3.  **Compile and Install**:
     ```bash
     cd nodogsplash
     make
     sudo make install
     ```
+
 4.  **Return to the Portal Directory**:
     ```bash
     cd ~/sulit-wifi-portal
