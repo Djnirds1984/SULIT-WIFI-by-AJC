@@ -1,12 +1,12 @@
-# SULIT WIFI Portal on Orange Pi One
+# SULIT WIFI Portal on Orange Pi & Raspberry Pi
 
-This guide provides step-by-step instructions for deploying the SULIT WIFI hotspot portal on an Orange Pi One running Armbian. The project includes a Node.js backend, a React frontend, and integration with the Orange Pi's GPIO for a physical coin slot.
+This guide provides step-by-step instructions for deploying the SULIT WIFI hotspot portal on ARM-based Single Board Computers (SBCs) like the Orange Pi One or Raspberry Pi 3B+/4, running a Debian-based OS like Armbian or Raspberry Pi OS.
 
 ## Table of Contents
 
 1.  [Project Overview](#project-overview)
 2.  [Hardware & Software Prerequisites](#hardware--software-prerequisites)
-3.  [Step 1: Orange Pi One Setup](#step-1-orange-pi-one-setup)
+3.  [Step 1: SBC Setup (Armbian / Raspberry Pi OS)](#step-1-sbc-setup-armbian--raspberry-pi-os)
 4.  [Step 2: PostgreSQL Database Setup](#step-2-postgresql-database-setup)
 5.  [Step 3: Backend & Frontend Setup](#step-3-backend--frontend-setup)
 6.  [Step 4: GPIO Coin Slot Integration](#step-4-gpio-coin-slot-integration)
@@ -28,29 +28,29 @@ This application creates a captive portal for a Wi-Fi hotspot, running on a sing
 ## Hardware & Software Prerequisites
 
 ### Hardware
-*   Orange Pi One
-*   A reliable 5V/2A power supply
+*   Orange Pi One, Raspberry Pi 3B+, 4, or newer
+*   A reliable 5V/2A (or 3A for Raspberry Pi) power supply
 *   A high-quality microSD Card (16GB or more recommended)
 *   A USB Wi-Fi Adapter
 *   A physical coin acceptor/slot mechanism
 *   Jumper wires for connecting the coin slot
 
 ### Software
-*   [Armbian](https://www.armbian.com/orange-pi-one/) (Debian-based version recommended)
+*   [Armbian](https://www.armbian.com/orange-pi-one/) (for Orange Pi) or [Raspberry Pi OS](https://www.raspberrypi.com/software/) (for Raspberry Pi)
 *   An SSH client (like PuTTY)
 *   [BalenaEtcher](https://www.balena.io/etcher/)
 
 ---
 
-## Step 1: Orange Pi One Setup
+## Step 1: SBC Setup (Armbian / Raspberry Pi OS)
 
-1.  **Flash Armbian**: Download and flash the Armbian image onto your microSD card.
-2.  **First Boot & Config**: Boot the Orange Pi, connect it via Ethernet, and SSH in (`ssh root@<ORANGE_PI_IP_ADDRESS>`). Change the default password (`1234`) and create a new user.
+1.  **Flash OS**: Download and flash the appropriate OS image onto your microSD card.
+2.  **First Boot & Config**: Boot the SBC, connect it via Ethernet, and SSH in. For Raspberry Pi OS, the default user is `pi`. For Armbian, you will set up a user on first boot.
 3.  **System Update**:
     ```bash
     sudo apt-get update && sudo apt-get upgrade -y
     ```
-4.  **Install Build Tools**: Required for the `onoff` GPIO library.
+4.  **Install Build Tools**: **(CRITICAL for Coin Slot & Nodogsplash)** This is required for multiple components.
     ```bash
     sudo apt-get install -y build-essential
     ```
@@ -121,21 +121,34 @@ The application requires a PostgreSQL database to store all persistent data.
     ```bash
     npm install
     ```
+    > **Note:** You may see errors related to `epoll` or `onoff` during this step. This is expected if you haven't installed `build-essential` yet. The installation will still complete successfully, but the coin slot feature will be disabled. See Step 4 for details.
 
 ---
 
 ## Step 4: GPIO Coin Slot Integration
 
-1.  **Physical Connection**:
-    *   Connect the coin acceptor's **GND** to a Ground pin on the Orange Pi.
-    *   Connect its **VCC** wire to a 5V pin.
-    *   Connect its **Signal** wire to **GPIO7**. If you use a different pin, update the `COIN_SLOT_GPIO_PIN` variable in `server.js`.
+### 4.1. IMPORTANT: About `onoff` Installation Errors
 
-2.  **Permissions**: Add your user to the `gpio` group and reboot.
-    ```bash
-    sudo usermod -aG gpio <your-username>
-    sudo reboot
-    ```
+The `onoff` package is used for the physical coin slot. It is an **optional dependency**.
+-   If `npm install` shows errors related to `epoll` or `onoff`, it means the native module failed to compile.
+-   **The server will still run perfectly fine**, but the coin slot feature will be disabled.
+-   To fix this, ensure you have installed the build tools from Step 1: `sudo apt-get install -y build-essential`. Then, run `npm install` again.
+
+### 4.2. Physical Connection
+
+*   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
+*   Connect its **VCC** wire to a 5V pin.
+*   Connect its **Signal** wire to **GPIO7**.
+    *   **Note**: The `onoff` library uses **BCM pin numbering**. On a Raspberry Pi, GPIO7 is physical pin 26 on the header.
+    *   If you use a different pin, update the `COIN_SLOT_GPIO_PIN` variable in `server.js`.
+
+### 4.3. Permissions
+
+Add your user to the `gpio` group and reboot.
+```bash
+sudo usermod -aG gpio <your-username>
+sudo reboot
+```
 
 ---
 
@@ -143,12 +156,37 @@ The application requires a PostgreSQL database to store all persistent data.
 
 We use Nginx as a reverse proxy and `nodogsplash` as the captive portal software.
 
-### 1. Install Nginx, Nodogsplash, and Network Tools
+### 1. Install Nginx & Network Tools
 ```bash
-sudo apt-get install -y nginx nodogsplash ifupdown
+sudo apt-get install -y nginx ifupdown
 ```
 
-### 2. Configure Nginx (Robust Setup)
+### 2. Install Nodogsplash (Compile from Source)
+
+The `nodogsplash` package is often not available in default OS repositories. The most reliable way to install it is by compiling it from source.
+
+1.  **Install Build Dependency**:
+    ```bash
+    sudo apt-get install -y libmicrohttpd-dev
+    ```
+2.  **Clone the Official Repository**:
+    ```bash
+    # IMPORTANT: Run this from your home directory (~), NOT from the sulit-wifi-portal directory.
+    cd ~ 
+    git clone https://github.com/nodogsplash/nodogsplash.git
+    ```
+3.  **Compile and Install**:
+    ```bash
+    cd nodogsplash
+    make
+    sudo make install
+    ```
+4.  **Return to the Portal Directory**:
+    ```bash
+    cd ~/sulit-wifi-portal
+    ```
+
+### 3. Configure Nginx (Robust Setup)
 This setup is designed for maximum reliability. Nginx, a high-performance web server, will directly serve your portal's user interface. The Node.js application will run as a dedicated API server.
 
 **Why this is important:** If the Node.js server has a problem (e.g., a database connection issue) and fails to start, users will **still see the portal's login page** instead of a "502 Bad Gateway" error. The portal will then show a specific "cannot connect" message, which is a much better user experience and easier to troubleshoot.
@@ -164,7 +202,7 @@ This setup is designed for maximum reliability. Nginx, a high-performance web se
         # --- ⬇️ CRITICAL: UPDATE THIS PATH ⬇️ ---
         # Replace with the ABSOLUTE path to your project's 'public' directory.
         # Example for user 'pi': root /home/pi/sulit-wifi-portal/public;
-        # Example for user 'admin': root /home/admin/sulit-wifi-portal/public;
+        # Example for user 'ajc': root /home/ajc/sulit-wifi-portal/public;
         root /home/YOUR_USERNAME/sulit-wifi-portal/public;
         # --- ⬆️ CRITICAL: UPDATE THIS PATH ⬆️ ---
 
@@ -194,7 +232,7 @@ This setup is designed for maximum reliability. Nginx, a high-performance web se
     ```
 *   **Test and restart Nginx**: `sudo nginx -t` followed by `sudo systemctl restart nginx`.
 
-### 3. Configure Nodogsplash
+### 4. Configure Nodogsplash
 Redirect captive portal clients to the portal's static IP address (which you will set in the admin panel).
 
 *   **Edit config**: `sudo nano /etc/nodogsplash/nodogsplash.conf`
@@ -236,21 +274,27 @@ Redirect captive portal clients to the portal's static IP address (which you wil
 
 ## Step 7: Admin Panel WAN Access
 
-With the Nginx configuration, the admin panel is accessible on port `80` from any network connected to the Orange Pi.
+With the Nginx configuration, the admin panel is accessible on port `80` from any network connected to the SBC.
 
-1.  **Configure Firewall (UFW)**: If you use `ufw` (Uncomplicated Firewall) on Armbian:
+1.  **Configure Firewall (UFW)**: If you use `ufw` (Uncomplicated Firewall):
     ```bash
     sudo ufw allow 80/tcp
     sudo ufw enable
     ```
-    If you are behind another router, you may also need to set up port forwarding on that router to forward traffic from its WAN IP on port `80` to your Orange Pi's IP on port `80`.
+    If you are behind another router, you may also need to set up port forwarding on that router to forward traffic from its WAN IP on port `80` to your SBC's IP on port `80`.
 
 2.  **Access the Admin Panel**:
-    `http://<YOUR_ORANGE_PI_IP>/admin`
+    `http://<YOUR_SBC_IP>/admin`
 
 ---
 
 ## Troubleshooting
+
+### Error: `npm ERR! epoll@... install: node-gyp rebuild`
+This error occurs when installing the optional `onoff` dependency for the coin slot.
+*   **Cause**: Your system is missing the necessary C++ compiler and build tools.
+*   **Solution**: Install the `build-essential` package: `sudo apt-get install -y build-essential`, then run `npm install` again.
+*   **Alternative**: You can ignore this error. The application will run correctly, but the physical coin slot feature will be disabled.
 
 ### Error: `listen EADDRINUSE: address already in use :::3001`
 Another process is using port 3001. Find it with `sudo lsof -i :3001`, note the PID, and stop it with `sudo kill -9 <PID>`. Then restart the app.
