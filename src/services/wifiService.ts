@@ -49,6 +49,16 @@ export const activateVoucher = async (code: string): Promise<Session> => {
     return handleResponse(response);
 };
 
+export const activateCoinSession = async (): Promise<Session> => {
+    const mac = getMacAddress();
+    if (!mac) throw new Error("MAC address not found in URL. Cannot start session.");
+    const response = await fetch(`/api/sessions/coin?mac=${mac}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    });
+    return handleResponse(response);
+};
+
 export const logout = async (): Promise<void> => {
     const mac = getMacAddress();
     if (!mac) throw new Error("MAC address not found in URL. Cannot log out.");
@@ -100,20 +110,6 @@ export const createVoucher = async (duration: number): Promise<{ code: string }>
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration }),
-    });
-    return handleResponse(response);
-};
-
-export const getAdminSettings = async (): Promise<{ ssid: string }> => {
-    const response = await fetch('/api/admin/settings', { headers: getAuthHeaders() });
-    return handleResponse(response);
-};
-
-export const updateAdminSettings = async (ssid: string): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ssid }),
     });
     return handleResponse(response);
 };

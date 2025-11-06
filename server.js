@@ -20,7 +20,7 @@ const DB = require('./backend/postgres.js');
 // --- Server Configuration ---
 const PORT = 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-and-secure-key-for-jwt';
-const COIN_SLOT_GPIO_PIN = 7;
+const COIN_SLOT_GPIO_PIN = 7; // Using BCM numbering
 const COIN_SESSION_DURATION_SECONDS = 15 * 60; // 15 minutes
 const BACKUP_DIR = path.join(__dirname, 'backups');
 const DB_CONNECT_RETRIES = 5;
@@ -71,22 +71,35 @@ const authMiddleware = (req, res, next) => {
 };
 
 // --- GPIO Coin Slot Integration ---
-let Gpio;
+let gpio;
 try {
-    Gpio = require('onoff').Gpio;
+    // Use a more modern GPIO library to avoid sysfs issues on newer Raspberry Pi OS.
+    gpio = require('rpi-gpio');
 } catch (e) {
-    console.warn('[Portal] GPIO module not found. Running in dev mode (no coin slot).');
-    Gpio = null;
+    console.warn('[Portal] GPIO module (rpi-gpio) not found. Running in dev mode (no coin slot).');
+    gpio = null;
 }
 
-if (Gpio && Gpio.accessible) {
-    try {
-        const coinSlot = new Gpio(COIN_SLOT_GPIO_PIN, 'in', 'falling', { debounceTimeout: 100 });
-        coinSlot.watch(async (err) => {
-            if (err) {
-                console.error('[Portal] Error watching coin slot:', err);
-                return;
+if (gpio) {
+    const gpiop = gpio.promise;
+    
+    // Set pin numbering to BCM which is consistent with documentation and less confusing than physical pins.
+    gpio.setMode(gpio.MODE_BCM);
+
+    // Debounce logic to prevent multiple triggers from one coin drop.
+    let lastCoinTime = 0;
+    const DEBOUNCE_MS = 200;
+
+    gpio.on('change', async (channel, value) => {
+        // The 'channel' is the BCM pin number that changed.
+        // We only care about our specific pin and its falling edge (value === false).
+        if (channel === COIN_SLOT_GPIO_PIN && value === false) {
+            const now = Date.now();
+            if (now - lastCoinTime < DEBOUNCE_MS) {
+                return; // Debounced
             }
+            lastCoinTime = now;
+
             console.log('[Portal] Coin inserted!');
             try {
                 const mac = await DB.getLastUnauthenticatedMac();
@@ -100,23 +113,32 @@ if (Gpio && Gpio.accessible) {
             } catch (e) {
                 console.error('[Portal] Failed to process coin insertion:', e);
             }
-        });
-        console.log(`[Portal] GPIO pin ${COIN_SLOT_GPIO_PIN} initialized for coin slot.`);
+        }
+    });
 
-        process.on('SIGINT', () => {
-            coinSlot.unexport();
+    // Setup the pin for input and to listen for falling edge events.
+    gpiop.setup(COIN_SLOT_GPIO_PIN, gpio.DIR_IN, gpio.EDGE_FALLING)
+        .then(() => {
+            console.log(`[Portal] GPIO pin BCM ${COIN_SLOT_GPIO_PIN} initialized for coin slot using rpi-gpio.`);
+        })
+        .catch((err) => {
+            console.error(`[Portal] Failed to initialize GPIO pin ${COIN_SLOT_GPIO_PIN}. Error:`, err);
+            console.error('[Portal] Please ensure the user running this script is in the "gpio" group and that the pin is not in use.');
+        });
+    
+    // Graceful shutdown: unexport the pin.
+    process.on('SIGINT', () => {
+        console.log('[Portal] Shutting down, cleaning up GPIO...');
+        gpiop.destroy().then(() => {
+            console.log('[Portal] GPIO cleaned up.');
+            process.exit();
+        }).catch(err => {
+            console.error('[Portal] Error during GPIO cleanup:', err);
             process.exit();
         });
-    } catch (gpioError) {
-        console.error(`[Portal] Failed to initialize GPIO pin ${COIN_SLOT_GPIO_PIN}.`);
-        if (gpioError.code === 'EINVAL' && process.platform === 'linux') {
-            console.error('[Portal] This "EINVAL" error on a Raspberry Pi often means the legacy GPIO interface is disabled.');
-            console.error('[Portal] ACTION REQUIRED: Add the line "dtoverlay=gpio-sysfs" to your /boot/config.txt file and then reboot the device.');
-        } else {
-            console.error('[Portal] Please check permissions and ensure the pin is not in use. Error:', gpioError);
-        }
-    }
+    });
 }
+
 
 // --- Frontend Serving ---
 // Serve static assets from the 'public' directory
@@ -128,12 +150,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- Public / User Portal API ---
 app.get('/api/public/settings', async (req, res) => {
     try {
-        const ssidSetting = await DB.getSetting('networkSsid');
+        const networkConfigSetting = await DB.getSetting('networkConfig');
+        const ssid = networkConfigSetting?.value?.ssid ?? 'SULIT WIFI';
         res.json({
-            ssid: ssidSetting?.value ?? 'SULIT WIFI',
+            ssid,
             geminiApiKey: process.env.API_KEY || null
         });
     } catch (error) {
+        console.error("Error fetching public settings:", error);
         res.status(500).json({ message: 'Could not load network settings.' });
     }
 });
@@ -328,28 +352,6 @@ app.post('/api/admin/vouchers', authMiddleware, async (req, res) => {
         res.status(201).json({ code });
     } catch (error) {
         res.status(500).json({ message: 'Failed to generate voucher.' });
-    }
-});
-
-app.get('/api/admin/settings', authMiddleware, async (req, res) => {
-    try {
-        const ssidSetting = await DB.getSetting('networkSsid');
-        res.json({ ssid: ssidSetting?.value ?? 'SULIT WIFI' });
-    } catch (error) {
-        res.status(500).json({ message: 'Failed to load settings.' });
-    }
-});
-
-app.put('/api/admin/settings', authMiddleware, async (req, res) => {
-    const { ssid } = req.body;
-    try {
-        await DB.updateSetting('networkSsid', ssid);
-        // Note: Changing the SSID in the database doesn't automatically change the system's Wi-Fi config.
-        // This requires integration with hostapd or similar, which is complex and OS-dependent.
-        // For now, this setting is cosmetic for the portal UI.
-        res.json({ message: 'SSID updated successfully.' });
-    } catch (error) {
-        res.status(500).json({ message: 'Failed to save settings.' });
     }
 });
 

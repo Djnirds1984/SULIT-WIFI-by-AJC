@@ -36,9 +36,9 @@ const AdminView: React.FC<AdminViewProps> = ({ onLogout }) => {
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: ChartBarIcon },
         { id: 'vouchers', label: 'Vouchers', icon: TicketIcon },
-        { id: 'settings', label: 'Settings', icon: CogIcon },
         { id: 'network', label: 'Network', icon: WrenchScrewdriverIcon },
-        { id: 'updater', label: 'Updater', icon: CloudArrowDownIcon },
+        { id: 'updater', label: 'Updater & Backups', icon: CloudArrowDownIcon },
+        { id: 'settings', label: 'System', icon: CogIcon },
         // { id: 'editor', label: 'Portal Editor', icon: CodeBracketIcon },
     ];
 

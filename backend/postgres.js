@@ -95,11 +95,6 @@ const seedInitialData = async () => {
         await query('INSERT INTO admin (id, username, password_hash) VALUES (1, $1, $2)', ['admin', passwordHash]);
         console.log('[DB] Default admin user created with password "admin". PLEASE CHANGE THIS!');
     }
-
-    const ssidRes = await query("SELECT * FROM settings WHERE key = 'networkSsid'");
-    if (ssidRes.rowCount === 0) {
-        await query("INSERT INTO settings (key, value) VALUES ('networkSsid', $1)", ['"SULIT WIFI"']);
-    }
     
     const netConfigRes = await query("SELECT * FROM settings WHERE key = 'networkConfig'");
     if (netConfigRes.rowCount === 0) {

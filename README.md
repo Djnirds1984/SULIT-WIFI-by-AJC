@@ -119,25 +119,25 @@ The application requires a PostgreSQL database to store all persistent data.
     ```bash
     npm install
     ```
-    > **Note:** You may see errors related to `epoll` or `onoff` during this step. This is expected if you haven't installed `build-essential` yet. The installation will still complete successfully, but the coin slot feature will be disabled. See Step 4 for details.
+    > **Note:** You may see errors related to `rpi-gpio` during this step. This is expected if you haven't installed `build-essential` yet. The installation will still complete successfully, but the coin slot feature will be disabled. See Step 4 for details.
 
 ---
 
 ## Step 4: GPIO Coin Slot Integration
 
-### 4.1. IMPORTANT: About `onoff` Installation Errors
+### 4.1. IMPORTANT: GPIO Module Installation
 
-The `onoff` package is used for the physical coin slot. It is an **optional dependency**.
--   If `npm install` shows errors related to `epoll` or `onoff`, it means the native module failed to compile.
--   **The server will still run perfectly fine**, but the coin slot feature will be disabled.
--   To fix this, ensure you have installed the build tools from Step 1: `sudo apt-get install -y build-essential`. Then, run `npm install` again.
+The physical coin slot requires a native GPIO module (`rpi-gpio`). This is an **optional dependency**.
+- If `npm install` shows errors related to this module, it's likely because the required build tools are missing.
+- **The server is designed to run perfectly fine even if this module fails to install**, but the coin slot feature will be automatically disabled.
+- To enable the coin slot, ensure you have installed the build tools from Step 1 (`sudo apt-get install -y build-essential`) and then run `npm install` again.
 
 ### 4.2. Physical Connection
 
 *   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
 *   Connect its **VCC** wire to a 5V pin.
 *   Connect its **Signal** wire to **GPIO7**.
-    *   **Note**: The `onoff` library uses **BCM pin numbering**. On a Raspberry Pi, GPIO7 is physical pin 26 on the header.
+    *   **Note**: The server uses **BCM pin numbering**. On a Raspberry Pi, GPIO7 is physical pin 26 on the header.
     *   If you use a different pin, update the `COIN_SLOT_GPIO_PIN` variable in `server.js`.
 
 ### 4.3. Permissions
@@ -329,27 +329,8 @@ This critical error means the password in your `.env` file does not match the pa
     4.  Update your `.env` file with the `new_secure_password`.
     5.  Restart the application to apply the changes: `pm2 restart sulit-wifi`.
 
-### Error: `Failed to initialize GPIO pin ... EINVAL: invalid argument`
-This error occurs when the server starts, especially on Raspberry Pi.
-*   **Cause**: On recent versions of Raspberry Pi OS, the legacy `/sys/class/gpio` interface, which is required by the `onoff` library, is disabled by default. The operating system rejects the attempt to use the pin.
-*   **Solution**: You need to re-enable this interface.
-    1.  Edit the boot configuration file:
-        ```bash
-        sudo nano /boot/config.txt
-        ```
-    2.  Add the following line at the very bottom of the file:
-        ```
-        dtoverlay=gpio-sysfs
-        ```
-    3.  Press `CTRL+X`, then `Y`, then `Enter` to save and exit.
-    4.  Reboot your Raspberry Pi for the change to take effect:
-        ```bash
-        sudo reboot
-        ```
-    5.  The server should now start without the GPIO error.
-
-### Error: `npm ERR! epoll@... install: node-gyp rebuild`
-This error occurs when installing the optional `onoff` dependency for the coin slot.
+### Error: `npm ERR! rpi-gpio@... install: node-gyp rebuild`
+This error occurs when installing the optional `rpi-gpio` dependency for the coin slot.
 *   **Cause**: Your system is missing the necessary C++ compiler and build tools.
 *   **Solution**: Install the `build-essential` package: `sudo apt-get install -y build-essential`, then run `npm install` again.
 *   **Alternative**: You can ignore this error. The application will run correctly, but the physical coin slot feature will be disabled.
