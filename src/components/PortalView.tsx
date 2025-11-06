@@ -30,7 +30,8 @@ const PortalView: React.FC = () => {
         try {
             const settings = await getPublicSettings();
             setSsid(settings.ssid);
-            initializeGeminiClient(settings.geminiApiKey);
+            // FIX: API key is handled by geminiService.
+            initializeGeminiClient();
         } catch (e) {
             console.error("Failed to fetch settings:", e);
         }

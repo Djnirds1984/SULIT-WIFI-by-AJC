@@ -1,13 +1,5 @@
 export interface Session {
-    voucherCode: string;
-    startTime: number;
-    duration: number;
     remainingTime: number;
-}
-
-export interface PublicSettings {
-    ssid: string;
-    geminiApiKey?: string | null;
 }
 
 export interface AdminStats {
@@ -31,16 +23,23 @@ export interface SystemInfo {
     };
 }
 
-export interface NetworkInterface {
-    name: string;
-    status: string;
-    ip4: string | null;
-    ip6: string | null;
-}
-
 export interface Voucher {
     code: string;
-    duration: number;
+    duration: number; // in seconds
+    isUsed: boolean;
+}
+
+export interface UpdaterStatus {
+    statusText: string;
+    localCommit: string;
+    remoteCommit: string | null;
+    isUpdateAvailable: boolean;
+}
+
+export interface NetworkInterface {
+    name: string;
+    ip4: string | null;
+    status: 'UP' | 'DOWN' | 'UNKNOWN';
 }
 
 export interface NetworkConfig {
@@ -57,9 +56,8 @@ export interface NetworkConfig {
     };
 }
 
-export interface UpdaterStatus {
-    isUpdateAvailable: boolean;
-    statusText: string;
-    localCommit: string;
-    remoteCommit?: string;
+// FIX: Removed geminiApiKey as per guideline to use environment variables.
+export interface Settings {
+    adminPassword?: string; // Optional for update payload
+    ssid?: string;
 }

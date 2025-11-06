@@ -1,77 +1,56 @@
-import { PublicSettings, Session, AdminStats, SystemInfo, NetworkInterface, Voucher, NetworkConfig, UpdaterStatus } from '../types';
+import { Session, AdminStats, SystemInfo, Voucher, UpdaterStatus, NetworkConfig, NetworkInterface, Settings } from '../types';
 
-const getMacAddress = (): string | null => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('mac') || params.get('client_mac'); // Some systems use client_mac
-};
+const API_BASE_URL = '/api';
 
+// Helper to handle API responses
 const handleResponse = async (response: Response) => {
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
-        throw new Error(error.message || `An unknown error occurred. Status: ${response.status}`);
-    }
-    if (response.status === 204) {
-        return;
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.message || 'An unknown error occurred');
     }
     return response.json();
 };
 
-const getAuthHeaders = () => {
+// Helper for authenticated API calls
+const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('admin_token');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
+    const headers = {
+        ...options.headers,
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+    };
+    return fetch(url, { ...options, headers });
 };
 
-// --- Public API ---
 
-export const getPublicSettings = async (): Promise<PublicSettings> => {
-    const response = await fetch('/api/public/settings');
-    return handleResponse(response);
+// Public routes
+export const getCurrentSession = (): Promise<Session> => {
+    return fetch(`${API_BASE_URL}/session`).then(handleResponse);
 };
 
-export const getCurrentSession = async (): Promise<Session | null> => {
-    const mac = getMacAddress();
-    if (!mac) return null; // No MAC, no session
-    const response = await fetch(`/api/sessions/current?mac=${mac}`);
-    if (response.status === 404) {
-        return null;
-    }
-    return handleResponse(response);
+export const logout = (): Promise<{ message: string }> => {
+    return fetch(`${API_BASE_URL}/logout`, { method: 'POST' }).then(handleResponse);
 };
 
-export const activateVoucher = async (code: string): Promise<Session> => {
-    const mac = getMacAddress();
-    if (!mac) throw new Error("MAC address not found in URL. Cannot activate voucher.");
-    const response = await fetch(`/api/sessions/voucher?mac=${mac}`, {
+// FIX: Removed geminiApiKey from public settings per API key guidelines.
+export const getPublicSettings = (): Promise<{ ssid: string }> => {
+    return fetch(`${API_BASE_URL}/settings/public`).then(handleResponse);
+};
+
+export const activateVoucher = (code: string): Promise<Session> => {
+    return fetch(`${API_BASE_URL}/voucher/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
-    });
-    return handleResponse(response);
+    }).then(handleResponse);
 };
 
-export const activateCoinSession = async (): Promise<Session> => {
-    const mac = getMacAddress();
-    if (!mac) throw new Error("MAC address not found in URL. Cannot start session.");
-    const response = await fetch(`/api/sessions/coin?mac=${mac}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-    });
-    return handleResponse(response);
+export const activateCoinSession = (): Promise<Session> => {
+    return fetch(`${API_BASE_URL}/session/coin`, { method: 'POST' }).then(handleResponse);
 };
-
-export const logout = async (): Promise<void> => {
-    const mac = getMacAddress();
-    if (!mac) throw new Error("MAC address not found in URL. Cannot log out.");
-    const response = await fetch(`/api/sessions/current?mac=${mac}`, {
-        method: 'DELETE',
-    });
-    await handleResponse(response);
-};
-
-// --- Admin API ---
 
 export const loginAdmin = async (password: string): Promise<string> => {
-    const response = await fetch('/api/admin/login', {
+    const response = await fetch(`${API_BASE_URL}/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
@@ -80,125 +59,97 @@ export const loginAdmin = async (password: string): Promise<string> => {
     return data.token;
 };
 
-export const getAdminStats = async (): Promise<AdminStats> => {
-    const response = await fetch('/api/admin/stats', { headers: getAuthHeaders() });
-    return handleResponse(response);
+// Admin routes
+export const getAdminStats = (): Promise<AdminStats> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/stats`).then(handleResponse);
 };
 
-export const getSystemInfo = async (): Promise<SystemInfo> => {
-    const response = await fetch('/api/admin/system-info', { headers: getAuthHeaders() });
-    return handleResponse(response);
+export const getSystemInfo = (): Promise<SystemInfo> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/system-info`).then(handleResponse);
 };
 
-export const getNetworkInfo = async (): Promise<NetworkInterface[]> => {
-    const response = await fetch('/api/admin/network-info', { headers: getAuthHeaders() });
-    return handleResponse(response);
+export const getVouchers = (): Promise<Voucher[]> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/vouchers`).then(handleResponse);
 };
 
-export const getWanInfo = async (): Promise<{ name: string }> => {
-    const response = await fetch('/api/admin/network-wan-info', { headers: getAuthHeaders() });
-    return handleResponse(response);
-};
-
-export const getVouchers = async (): Promise<Voucher[]> => {
-    const response = await fetch('/api/admin/vouchers', { headers: getAuthHeaders() });
-    return handleResponse(response);
-};
-
-export const createVoucher = async (duration: number): Promise<{ code: string }> => {
-    const response = await fetch('/api/admin/vouchers', {
+export const createVoucher = (duration: number): Promise<Voucher> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/vouchers`, {
         method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration }),
-    });
-    return handleResponse(response);
+    }).then(handleResponse);
 };
 
-export const getNetworkConfig = async (): Promise<NetworkConfig> => {
-    const response = await fetch('/api/admin/network-config', { headers: getAuthHeaders() });
-    return handleResponse(response);
+export const getUpdaterStatus = (): Promise<UpdaterStatus> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/updater/status`).then(handleResponse);
 };
 
-export const updateNetworkConfig = async (config: NetworkConfig): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/network-config', {
-        method: 'PUT',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-    });
-    return handleResponse(response);
+export const startUpdate = (): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/updater/start`, { method: 'POST' }).then(handleResponse);
 };
 
-export const resetDatabase = async (): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/database/reset', {
+export const listBackups = (): Promise<string[]> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/backups`).then(handleResponse);
+};
+
+export const createBackup = (): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/backups`, { method: 'POST' }).then(handleResponse);
+};
+
+export const restoreBackup = (filename: string): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/backups/restore`, {
         method: 'POST',
-        headers: getAuthHeaders()
-    });
-    return handleResponse(response);
-};
-
-export const getUpdaterStatus = async (): Promise<UpdaterStatus> => {
-    const response = await fetch('/api/admin/updater/status', { headers: getAuthHeaders() });
-    return handleResponse(response);
-};
-
-export const startUpdate = async (): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/updater/update', {
-        method: 'POST',
-        headers: getAuthHeaders()
-    });
-    return handleResponse(response);
-};
-
-export const getPortalHtml = async (): Promise<{ html: string }> => {
-    const response = await fetch('/api/admin/portal-html', { headers: getAuthHeaders() });
-    return handleResponse(response);
-};
-
-export const updatePortalHtml = async (html: string): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/portal-html', {
-        method: 'PUT',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html }),
-    });
-    return handleResponse(response);
-};
-
-export const resetPortalHtml = async (): Promise<{ html: string }> => {
-    const response = await fetch('/api/admin/portal-html/reset', {
-        method: 'POST',
-        headers: getAuthHeaders()
-    });
-    return handleResponse(response);
-};
-
-// --- Backup & Restore API ---
-export const listBackups = async (): Promise<string[]> => {
-    const response = await fetch('/api/admin/backups/list', { headers: getAuthHeaders() });
-    return handleResponse(response);
-};
-
-export const createBackup = async (): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/backups/create', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
-};
-
-export const restoreBackup = async (filename: string): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/backups/restore', {
-        method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
-    });
-    return handleResponse(response);
+    }).then(handleResponse);
 };
 
-export const deleteBackup = async (filename: string): Promise<{ message: string }> => {
-    const response = await fetch('/api/admin/backups/delete', {
+export const deleteBackup = (filename: string): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/backups`, {
         method: 'DELETE',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
-    });
-    return handleResponse(response);
+    }).then(handleResponse);
+};
+
+export const getNetworkConfig = (): Promise<NetworkConfig> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/network/config`).then(handleResponse);
+};
+
+export const updateNetworkConfig = (config: NetworkConfig): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/network/config`, {
+        method: 'POST',
+        body: JSON.stringify(config),
+    }).then(handleResponse);
+};
+
+export const getNetworkInfo = (): Promise<NetworkInterface[]> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/network/info`).then(handleResponse);
+};
+
+export const getWanInfo = (): Promise<{ name: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/network/wan`).then(handleResponse);
+};
+
+export const getPortalHtml = (): Promise<{ html: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/portal/html`).then(handleResponse);
+};
+
+export const updatePortalHtml = (html: string): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/portal/html`, {
+        method: 'POST',
+        body: JSON.stringify({ html }),
+    }).then(handleResponse);
+};
+
+export const resetPortalHtml = (): Promise<{ html: string, message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/portal/html/reset`, { method: 'POST' }).then(handleResponse);
+};
+
+export const getSettings = (): Promise<Settings> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/settings`).then(handleResponse);
+};
+
+export const updateSettings = (settings: Settings): Promise<{ message: string }> => {
+    return fetchWithAuth(`${API_BASE_URL}/admin/settings`, {
+        method: 'POST',
+        body: JSON.stringify(settings),
+    }).then(handleResponse);
 };
