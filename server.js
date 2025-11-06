@@ -108,7 +108,13 @@ if (Gpio && Gpio.accessible) {
             process.exit();
         });
     } catch (gpioError) {
-        console.error(`[Portal] Failed to initialize GPIO pin ${COIN_SLOT_GPIO_PIN}. Please check permissions. Error:`, gpioError);
+        console.error(`[Portal] Failed to initialize GPIO pin ${COIN_SLOT_GPIO_PIN}.`);
+        if (gpioError.code === 'EINVAL' && process.platform === 'linux') {
+            console.error('[Portal] This "EINVAL" error on a Raspberry Pi often means the legacy GPIO interface is disabled.');
+            console.error('[Portal] ACTION REQUIRED: Add the line "dtoverlay=gpio-sysfs" to your /boot/config.txt file and then reboot the device.');
+        } else {
+            console.error('[Portal] Please check permissions and ensure the pin is not in use. Error:', gpioError);
+        }
     }
 }
 

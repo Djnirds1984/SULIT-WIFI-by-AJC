@@ -328,6 +328,25 @@ This critical error means the password in your `.env` file does not match the pa
     4.  Update your `.env` file with the `new_secure_password`.
     5.  Restart the application to apply the changes: `pm2 restart sulit-wifi`.
 
+### Error: `Failed to initialize GPIO pin ... EINVAL: invalid argument`
+This error occurs when the server starts, especially on Raspberry Pi.
+*   **Cause**: On recent versions of Raspberry Pi OS, the legacy `/sys/class/gpio` interface, which is required by the `onoff` library, is disabled by default. The operating system rejects the attempt to use the pin.
+*   **Solution**: You need to re-enable this interface.
+    1.  Edit the boot configuration file:
+        ```bash
+        sudo nano /boot/config.txt
+        ```
+    2.  Add the following line at the very bottom of the file:
+        ```
+        dtoverlay=gpio-sysfs
+        ```
+    3.  Press `CTRL+X`, then `Y`, then `Enter` to save and exit.
+    4.  Reboot your Raspberry Pi for the change to take effect:
+        ```bash
+        sudo reboot
+        ```
+    5.  The server should now start without the GPIO error.
+
 ### Error: `npm ERR! epoll@... install: node-gyp rebuild`
 This error occurs when installing the optional `onoff` dependency for the coin slot.
 *   **Cause**: Your system is missing the necessary C++ compiler and build tools.
