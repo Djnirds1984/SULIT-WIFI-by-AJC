@@ -106,6 +106,9 @@ const seedInitialData = async () => {
         const defaultConfig = {
             wanInterface: "eth0",
             hotspotInterface: "wlan0",
+            ssid: "SULIT WIFI",
+            security: "open",
+            password: "",
             hotspotIpAddress: "192.168.200.13",
             hotspotDhcpServer: {
                 enabled: true,

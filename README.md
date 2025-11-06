@@ -166,9 +166,10 @@ The user running the application needs permission to access the GPIO hardware.
 
 We use Nginx as a reverse proxy and `nodogsplash` as the captive portal software.
 
-### 1. Install Nginx & Network Tools
+### 1. Install Networking Services
+Install all the required networking tools. `hostapd` creates the Wi-Fi access point, `dnsmasq` provides DHCP and DNS services to users, `nginx` serves the web portal, and `ifupdown` helps manage network interfaces.
 ```bash
-sudo apt-get install -y nginx ifupdown
+sudo apt-get install -y nginx ifupdown hostapd dnsmasq
 ```
 
 ### 2. Install Nodogsplash (Compile from Source)

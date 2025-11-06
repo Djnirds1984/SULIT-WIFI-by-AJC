@@ -364,6 +364,9 @@ app.get('/api/admin/network-config', authMiddleware, async(req, res) => {
             console.warn('[Admin] networkConfig setting not found in DB. Returning default.');
             res.json({
                 hotspotInterface: "wlan0",
+                ssid: "SULIT WIFI",
+                security: "open",
+                password: "",
                 hotspotIpAddress: "192.168.200.13",
                 hotspotDhcpServer: {
                     enabled: true,
@@ -384,7 +387,7 @@ app.put('/api/admin/network-config', authMiddleware, async (req, res) => {
     try {
         await DB.updateSetting('networkConfig', config);
 
-        const { hotspotInterface, hotspotIpAddress, hotspotDhcpServer } = config;
+        const { hotspotInterface, hotspotIpAddress, hotspotDhcpServer, ssid, security, password } = config;
 
         // --- 1. Persist static IP config for reboot ---
         const interfaceConfigPath = '/etc/network/interfaces.d/60-sulit-wifi-hotspot';
@@ -398,7 +401,7 @@ app.put('/api/admin/network-config', authMiddleware, async (req, res) => {
 auto ${hotspotInterface}
 iface ${hotspotInterface} inet static
     address ${hotspotIpAddress}
-    netmask 255.255.255.0
+    netmask 255.255.250.0
 `.trim();
         fs.writeFileSync(interfaceConfigPath, interfaceContent);
         console.log(`[Admin] Wrote interface config to ${interfaceConfigPath}`);
@@ -424,10 +427,33 @@ dhcp-option=option:dns-server,${hotspotIpAddress}
                 console.log(`[Admin] Removed dnsmasq config as DHCP is disabled.`);
             }
         }
+        
+        // --- 3. Persist Wi-Fi AP config for hostapd ---
+        const hostapdConfigPath = '/etc/hostapd/hostapd.conf';
+        let hostapdConfigContent = `
+# SULIT WIFI Hotspot AP Configuration (managed by admin panel)
+interface=${hotspotInterface}
+ssid=${ssid}
+driver=nl80211
+hw_mode=g
+channel=6
+ieee80211n=1
+`.trim();
 
-        // --- 3. Apply network changes live ---
-        // Use a more reliable, direct iproute2 command sequence. This avoids potential issues with
-        // the statefulness of ifupdown and ensures the IP is set before dnsmasq is restarted.
+        if (security === 'wpa2') {
+            hostapdConfigContent += `
+wpa=2
+wpa_passphrase=${password}
+wpa_key_mgmt=WPA-PSK
+rsn_pairwise=CCMP
+`.trim();
+        }
+        fs.writeFileSync(hostapdConfigPath, hostapdConfigContent);
+        console.log(`[Admin] Wrote hostapd config to ${hostapdConfigPath}`);
+
+
+        // --- 4. Apply network changes live ---
+        // Use a more reliable, direct iproute2 command sequence.
         const applyIpCommand = `
             sudo ip addr flush dev ${hotspotInterface} &&
             sudo ip addr add ${hotspotIpAddress}/24 dev ${hotspotInterface} &&
@@ -436,11 +462,12 @@ dhcp-option=option:dns-server,${hotspotIpAddress}
         await executeSystemCommand(applyIpCommand);
         console.log('[Admin] Applied new static IP address to hotspot interface.');
 
-        // --- 4. Restart dnsmasq to apply DHCP changes ---
-        // Add a short delay to ensure the network interface has fully settled before restarting the service.
+        // --- 5. Restart services to apply all changes ---
         await new Promise(resolve => setTimeout(resolve, 1500));
         await executeSystemCommand('sudo systemctl restart dnsmasq.service');
-        console.log('[Admin] Restarted dnsmasq service to apply new DHCP settings.');
+        console.log('[Admin] Restarted dnsmasq service.');
+        await executeSystemCommand('sudo systemctl restart hostapd.service');
+        console.log('[Admin] Restarted hostapd service.');
         
         res.json({ message: 'Configuration saved and applied successfully.' });
     } catch (error) {

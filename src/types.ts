@@ -45,6 +45,9 @@ export interface Voucher {
 
 export interface NetworkConfig {
     hotspotInterface: string;
+    ssid: string;
+    security: 'open' | 'wpa2';
+    password?: string;
     hotspotIpAddress: string;
     hotspotDhcpServer: {
         enabled: boolean;
