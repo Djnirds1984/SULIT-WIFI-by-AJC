@@ -101,20 +101,18 @@ The application requires a PostgreSQL database to store all persistent data.
     git clone https://github.com/Djnirds1984/SULIT-WIFI-by-AJC.git sulit-wifi-portal
     cd sulit-wifi-portal
     ```
-2.  **Configure Database Connection**:
-    *   Create a `.env` file in the project root to store your database credentials.
+2.  **Configure Environment Variables**:
+    *   The project uses a `.env` file to store sensitive information like your database password. A template file named `.env.example` is included to make setup easy.
+    *   **First, copy the template file**:
+        ```bash
+        cp .env.example .env
+        ```
+    *   **Next, edit the new `.env` file**:
         ```bash
         nano .env
         ```
-    *   Add the following lines, replacing `your_secure_password` with the one you created.
-        ```
-        # PostgreSQL Connection Details
-        PGHOST=localhost
-        PGUSER=sulituser
-        PGPASSWORD=your_secure_password
-        PGDATABASE=sulitwifi
-        PGPORT=5432
-        ```
+    *   Inside the editor, replace `your_secure_password_here` with the actual password you created for the `sulituser` in Step 2.
+    *   **(Optional)** If you want to use the AI Wi-Fi name generator, uncomment the `API_KEY` line and add your Google Gemini API key.
     *   Press `CTRL+X`, then `Y`, then `Enter` to save and exit.
 
 3.  **Install Dependencies**:
@@ -263,12 +261,7 @@ Redirect captive portal clients to the portal's static IP address (which you wil
 
 ## Step 6: Running the Application
 
-1.  **Set Gemini API Key (Optional)**: For the Wi-Fi name generator.
-    *   Edit your `.env` file (`nano .env`) and add this line:
-        ```
-        API_KEY="your_gemini_api_key_here"
-        ```
-2.  **Start the Server with PM2**:
+1.  **Start the Server with PM2**:
     *   Install PM2: `sudo npm install pm2 -g`
     *   **Start the server**:
         ```bash
@@ -282,7 +275,7 @@ Redirect captive portal clients to the portal's static IP address (which you wil
         *   `pm2 restart sulit-wifi`: Restart after making code changes.
     *   **Enable on boot**: `pm2 save` then `pm2 startup` (follow the on-screen command).
 
-3.  **Start Nodogsplash**:
+2.  **Start Nodogsplash**:
     ```bash
     sudo nodogsplash
     ```
@@ -307,10 +300,17 @@ With the Nginx configuration, the admin panel is accessible on port `80` from an
 
 ## Troubleshooting
 
-### Error: `SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string`
-This is a critical database connection error.
-*   **Cause**: This error occurs when the server starts but the `PGPASSWORD` variable is missing or not set. The database driver requires a password string but received an undefined value.
-*   **Solution**: Check your `.env` file in the project's root directory. Make sure it exists and that it contains a valid `PGPASSWORD=your_password_here` line. If the file is missing, create it by following Step 3.2 in the setup guide.
+### Error: `FATAL: The PGPASSWORD environment variable is not set.`
+This is the most common setup error.
+*   **Cause**: The application started but could not find the database password. This means the `.env` file is either missing, named incorrectly, or does not contain the `PGPASSWORD` line.
+*   **Solution**:
+    1.  Navigate to your project directory: `cd ~/sulit-wifi-portal`
+    2.  Ensure the file `.env` exists. You can check with `ls -a`.
+    3.  If it doesn't exist, create it by copying the template: `cp .env.example .env`.
+    4.  Open the file for editing: `nano .env`.
+    5.  Make sure the line `PGPASSWORD=your_secure_password_here` is present and that you have replaced the placeholder with your actual password.
+    6.  Restart the application: `pm2 restart sulit-wifi`.
+
 
 ### Error: `npm ERR! epoll@... install: node-gyp rebuild`
 This error occurs when installing the optional `onoff` dependency for the coin slot.
