@@ -1,26 +1,48 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import PortalView from './components/PortalView';
 import AdminLoginView from './components/AdminLoginView';
 import AdminView from './components/AdminView';
 
 const App: React.FC = () => {
-    // Simple auth check. In a real app, you'd validate the token with the server.
-    const [isAdmin, setIsAdmin] = React.useState<boolean>(() => !!localStorage.getItem('admin_token'));
+    const [isAdmin, setIsAdmin] = useState<boolean>(false);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const path = window.location.pathname;
+    // This effect runs once on component mount to check for an existing token
+    useEffect(() => {
+        const token = localStorage.getItem('admin_token');
+        if (token) {
+            // In a real app, you would validate the token with the server here.
+            // For simplicity, we'll just assume it's valid if it exists.
+            setIsAdmin(true);
+        }
+        setIsLoading(false);
+    }, []);
 
     const handleLogout = () => {
         localStorage.removeItem('admin_token');
         setIsAdmin(false);
-        // Redirect to admin login page
+        // Redirect to admin login page to prevent being stuck on a protected page
         window.location.href = '/admin';
     };
+
+    const handleLoginSuccess = () => {
+        setIsAdmin(true);
+        // Redirect to dashboard after successful login
+        window.location.href = '/admin';
+    };
+
+    if (isLoading) {
+        return <div className="flex justify-center items-center h-screen">Loading...</div>;
+    }
+
+    const path = window.location.pathname;
 
     if (path.startsWith('/admin')) {
         if (isAdmin) {
             return <AdminView onLogout={handleLogout} />;
         }
-        return <AdminLoginView onLoginSuccess={() => setIsAdmin(true)} />;
+        return <AdminLoginView onLoginSuccess={handleLoginSuccess} />;
     }
 
     return <PortalView />;

@@ -125,14 +125,7 @@ The application requires a PostgreSQL database to store all persistent data.
 
 ## Step 4: GPIO Coin Slot Integration
 
-### 4.1. IMPORTANT: GPIO Module Installation
-
-The physical coin slot requires the native GPIO module `onoff`. This is an **optional dependency**.
-- If `npm install` shows errors, it's because the required build tools from Step 1 are missing.
-- **The server is designed to run perfectly fine even if this module fails to install**, but the coin slot feature will be automatically disabled.
-- **To enable the coin slot, ensure you have installed `build-essential` and `libgpiod-dev` (from Step 1) and then run `npm install` again.**
-
-### 4.2. Physical Connection
+### 4.1. Physical Connection
 
 *   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
 *   Connect its **VCC** wire to a 5V pin.
@@ -140,22 +133,34 @@ The physical coin slot requires the native GPIO module `onoff`. This is an **opt
     *   **Note**: The server uses **BCM pin numbering**. The default is **GPIO2** (physical pin 3).
     *   Check your Raspberry Pi's pinout diagram to identify the correct physical pin.
 
-### 4.3. Permissions
+### 4.2. Permissions
 
-The user running the application needs permission to access the GPIO hardware.
+The user running the application needs permission to access the GPIO hardware. This is a **three-step process**.
 
-1.  **Create the `gpio` Group**: On some systems, the `gpio` group may not exist by default. Run the following command to create it if it's missing.
+1.  **Create the `gpio` Group**: On some systems, the `gpio` group may not exist by default. This command creates it.
     ```bash
     sudo groupadd --force gpio
     ```
     > The `--force` flag prevents an error if the group already exists.
 
-2.  **Add User to Group**: Add your user to the group. Replace `<your-username>` with your actual username (e.g., `pi`).
+2.  **Add User to Group**: Add your current user to the `gpio` group. Replace `<your-username>` with your actual username (e.g., `pi` or `root`).
     ```bash
     sudo usermod -aG gpio <your-username>
     ```
 
-3.  **Reboot**: A reboot is required for the group changes to take full effect.
+3.  **Create a System Rule (`udev`) for Permissions**: **(CRITICAL FIX)**
+    This is the most important step. On modern systems, you must create a special rule that grants the `gpio` group access to the hardware every time the system boots.
+    *   Create and open the rule file:
+        ```bash
+        sudo nano /etc/udev/rules.d/99-gpio.rules
+        ```
+    *   Paste the following single line into the file:
+        ```
+        SUBSYSTEM=="gpio", KERNEL=="gpiochip*", ACTION=="add", PROGRAM="/bin/sh -c 'chown root:gpio /dev/%k && chmod 660 /dev/%k'"
+        ```
+    *   Save and exit the editor (`CTRL+X`, `Y`, `Enter`).
+
+4.  **Reboot**: A full reboot is required for all permission changes to take effect.
     ```bash
     sudo reboot
     ```
@@ -300,6 +305,11 @@ With the Nginx configuration, the admin panel is accessible on port `80` from an
 ---
 
 ## Troubleshooting
+
+### GPIO Error: `Failed to setup coin slot ... EINVAL: invalid argument, write`
+This is a common and frustrating error on modern Raspberry Pi OS versions.
+*   **Cause**: The application does not have sufficient permission from the operating system to access the GPIO hardware device (`/dev/gpiochip*`).
+*   **Solution**: You must follow all steps in **Step 4.2: Permissions** exactly, especially Step 4.2.3 which creates the `udev` rule. This is a permanent fix that correctly sets hardware permissions on every boot. A reboot is required after applying the fix.
 
 ### Error: `FATAL: The PGPASSWORD environment variable is not set.`
 This is the most common setup error.

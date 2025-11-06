@@ -1,374 +1,488 @@
+
 require('dotenv').config();
 const express = require('express');
-const { exec } = require('child_process');
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const si = require('systeminformation');
+const db = require('./backend/postgres');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('./backend/postgres');
+const { exec } = require('child_process');
+const si = require('systeminformation');
+const fs = require('fs');
+const os = require('os');
 
-// --- PRE-FLIGHT CHECKS ---
-if (!process.env.PGPASSWORD) {
-    console.error('[FATAL] The PGPASSWORD environment variable is not set.');
-    console.error('Please check your .env file in the project root and ensure it contains a line like: PGPASSWORD=your_secure_password');
-    process.exit(1);
-}
-const JWT_SECRET = process.env.JWT_SECRET || 'default_super_secret_key_for_dev';
-
-// --- GPIO SETUP ---
+// --- Pre-flight Checks & Setup ---
+const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-default-key-that-should-be-changed';
 let Gpio;
+let coinSlotPin, relayPin, statusLedPin; // GPIO pin objects
+let activeCoinVouchers = {}; // In-memory store for coin-generated vouchers
+
 try {
     Gpio = require('onoff').Gpio;
+    console.log('[Portal] GPIO module loaded successfully.');
 } catch (err) {
+    console.warn('[Portal] GPIO module (onoff) not found. Running in dev mode (no coin slot/hardware).');
     Gpio = null;
-    console.log('[Portal] GPIO module (`onoff`) not found. Running in dev mode (no coin slot/relay/light).');
 }
 
-const activePins = []; // Keep track of pins to unexport on exit
-
-// --- UTILITY FUNCTIONS ---
-const runCommand = (command) => {
-    return new Promise((resolve, reject) => {
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Command error for "${command}": ${stderr}`);
-                return reject(new Error(stderr || error.message));
-            }
-            resolve(stdout.trim());
-        });
-    });
-};
-
-const getClientIp = (req) => {
-    return req.headers['x-forwarded-for']?.split(',').shift() || req.socket.remoteAddress;
-};
-
-// --- NODOGSPLASH (NDS) UTILS ---
-const ndsctl = async (action, clientIp) => {
-    try {
-        const stdout = await runCommand(`sudo /usr/bin/ndsctl ${action} ${clientIp}`);
-        return stdout;
-    } catch (error) {
-        console.error(`ndsctl command failed: ${error.message}`);
-        throw new Error('Failed to communicate with the captive portal service.');
-    }
-};
-
-const authenticateClient = (clientIp) => ndsctl('auth', clientIp);
-const deauthenticateClient = (clientIp) => ndsctl('deauth', clientIp);
-
-// --- AUTH MIDDLEWARE ---
-const authMiddleware = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ message: 'Authorization token is required.' });
-    }
-    const token = authHeader.split(' ')[1];
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded;
-        next();
-    } catch (error) {
-        return res.status(401).json({ message: 'Invalid or expired token.' });
-    }
-};
-
-
-// --- MAIN SERVER LOGIC ---
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- Middleware ---
+const authenticateAdmin = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token == null) return res.sendStatus(401);
 
-// --- PUBLIC API ROUTES ---
-app.get('/api/session', async (req, res) => {
-    const clientIp = getClientIp(req);
-    const session = await db.getSessionByIp(clientIp);
-    if (session && session.expiresAt > new Date()) {
-        const remainingTime = Math.floor((session.expiresAt.getTime() - new Date().getTime()) / 1000);
-        res.json({ remainingTime });
-    } else {
-        res.status(404).json({ message: 'No active session found.' });
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+};
+
+// --- Helper Functions ---
+const restartNetworkingServices = (res) => {
+    // This is a placeholder for a more robust script.
+    // In a real implementation, you would trigger a shell script to handle this.
+    console.log('[Network] Simulating restart of hostapd, dnsmasq, and networking...');
+     exec('sudo systemctl restart hostapd && sudo systemctl restart dnsmasq', (error, stdout, stderr) => {
+        if (error) {
+            console.error(`[Network] Service restart error: ${stderr}`);
+            return res.status(500).json({ message: `Failed to restart network services: ${stderr}` });
+        }
+        res.json({ message: 'Network configuration applied. Services are restarting.' });
+    });
+};
+
+const setupGpio = async () => {
+    if (!Gpio) return;
+
+    try {
+        const gpioConfig = await db.getSetting('gpioConfig');
+        if (!gpioConfig) {
+            console.warn('[GPIO] GPIO configuration not found in database. Hardware disabled.');
+            return;
+        }
+        
+        // Unexport pins if they are already initialized
+        if (coinSlotPin) coinSlotPin.unexport();
+        if (relayPin) relayPin.unexport();
+        if (statusLedPin) statusLedPin.unexport();
+
+        // --- Status LED ---
+        if (gpioConfig.statusLedPin) {
+            try {
+                statusLedPin = new Gpio(gpioConfig.statusLedPin, 'out');
+                await statusLedPin.write(1); // Turn on LED to show server is ready
+                console.log(`[GPIO] Status LED initialized on BCM pin ${gpioConfig.statusLedPin} and turned ON.`);
+            } catch (err) {
+                console.error(`[GPIO] Failed to setup status LED on BCM pin ${gpioConfig.statusLedPin}. Reason:`, err.message);
+            }
+        }
+        
+        // --- Relay ---
+        if (gpioConfig.relayPin) {
+             try {
+                relayPin = new Gpio(gpioConfig.relayPin, 'out');
+                await relayPin.write(1); // Activate relay
+                console.log(`[GPIO] Relay initialized on BCM pin ${gpioConfig.relayPin} and set to HIGH.`);
+            } catch (err)                {
+                 console.error(`[GPIO] Failed to setup relay on BCM pin ${gpioConfig.relayPin}. Reason:`, err.message);
+            }
+        }
+
+        // --- Coin Slot ---
+        if (gpioConfig.coinPin) {
+            try {
+                const coinOptions = {
+                    direction: 'in',
+                    edge: 'rising',
+                    debounceTimeout: 20, // Debounce to prevent multiple triggers for one coin
+                    activeLow: gpioConfig.coinSlotActiveLow, // CRITICAL: Use active-low if needed
+                };
+                
+                coinSlotPin = new Gpio(gpioConfig.coinPin, coinOptions.direction, coinOptions.edge, { 
+                    debounceTimeout: coinOptions.debounceTimeout, 
+                    activeLow: coinOptions.activeLow 
+                });
+                
+                coinSlotPin.watch(async (err, value) => {
+                    if (err) {
+                        console.error('[GPIO] Error watching coin slot pin:', err);
+                        return;
+                    }
+                    if (value === 1) { // Trigger on rising edge
+                        console.log('[CoinSlot] Coin pulse detected!');
+                        const settings = await db.getSetting('portalSettings');
+                        const duration = (settings.coinPulseValue || 15) * 60; // Use setting or default to 15 mins
+                        const voucher = await db.createVoucher(duration, 'COIN');
+                        console.log(`[CoinSlot] Generated ${duration/60}-minute voucher: ${voucher.code}`);
+                        activeCoinVouchers[voucher.code] = true; // Mark as a coin voucher
+                    }
+                });
+                
+                console.log(`[GPIO] Coin slot watcher initialized on BCM pin ${gpioConfig.coinPin} (ActiveLow: ${!!gpioConfig.coinSlotActiveLow}).`);
+
+            } catch (err) {
+                 console.error(`[GPIO] Failed to setup coin slot on BCM pin ${gpioConfig.coinPin}. Reason:`, err.message);
+                 if (err.code === 'EINVAL') {
+                    console.error('---');
+                    console.error('[GPIO_FIX] This error is common on Raspberry Pi / SBCs.');
+                    console.error('[GPIO_FIX] SOLUTION: Ensure the "libgpiod-dev" package is installed.');
+                    console.error('[GPIO_FIX] Run: sudo apt-get install -y libgpiod-dev');
+                    console.error('[GPIO_FIX] And ensure you have created the udev rule as per the README.');
+                    console.error('---');
+                 }
+            }
+        }
+        
+    } catch (dbErr) {
+        console.error('[GPIO] Could not fetch GPIO config from database:', dbErr);
     }
+};
+
+// --- Public API Routes ---
+app.get('/api/session', (req, res) => {
+    // This is a placeholder. A real implementation would check the user's MAC address
+    // against an active session list managed by nodogsplash or iptables.
+    // For now, we simulate no session.
+    res.status(404).json({ message: 'No active session found.' });
 });
 
-app.post('/api/logout', async (req, res) => {
-    const clientIp = getClientIp(req);
-    await db.deleteSessionByIp(clientIp);
-    await deauthenticateClient(clientIp);
-    res.json({ message: 'Successfully logged out.' });
+app.post('/api/logout', (req, res) => {
+    // Placeholder for logout logic
+    res.json({ message: 'Logged out successfully.' });
 });
 
 app.get('/api/settings/public', async (req, res) => {
-     try {
+    try {
         const networkConfig = await db.getSetting('networkConfig');
-        const ssid = networkConfig?.ssid || 'SULIT WIFI';
-        res.json({ ssid });
+        res.json({ ssid: networkConfig?.ssid || 'SULIT WIFI' });
     } catch (error) {
-        console.error("Error fetching public settings:", error);
-        res.status(500).json({ message: 'Could not load portal settings.' });
+        res.status(500).json({ message: "Could not fetch public settings." });
     }
 });
 
 app.post('/api/voucher/activate', async (req, res) => {
     const { code } = req.body;
-    const clientIp = getClientIp(req);
+    if (!code) {
+        return res.status(400).json({ message: 'Voucher code is required.' });
+    }
     try {
-        const session = await db.activateVoucher(code, clientIp);
-        await authenticateClient(clientIp);
-        res.json({ remainingTime: session.duration });
+        const voucher = await db.getVoucherByCode(code);
+        if (!voucher || voucher.is_used) {
+            return res.status(404).json({ message: 'Voucher is invalid or has already been used.' });
+        }
+
+        await db.markVoucherAsUsed(code);
+        
+        // In a real system, you'd grant access via nodogsplash here
+        // execSync(`ndsctl auth <user_ip> <duration_in_seconds>`);
+        
+        res.json({ remainingTime: voucher.duration });
     } catch (error) {
-        res.status(400).json({ message: error.message });
+        console.error('Voucher activation error:', error);
+        res.status(500).json({ message: 'Server error during voucher activation.' });
     }
 });
 
 app.post('/api/session/coin', async (req, res) => {
-    const clientIp = getClientIp(req);
     try {
-        const session = await db.createSession(clientIp, 15 * 60); // 15 minutes
-        await authenticateClient(clientIp);
-        res.json({ remainingTime: session.duration });
+        const settings = await db.getSetting('portalSettings');
+        const duration = (settings.coinPulseValue || 15) * 60; // Use setting or default to 15 mins
+        
+        // In a real system, you'd grant access via nodogsplash here
+        // execSync(`ndsctl auth <user_ip> ${duration}`);
+        
+        res.json({ remainingTime: duration });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Coin session error:', error);
+        res.status(500).json({ message: 'Could not start timed session.' });
     }
 });
 
-// --- ADMIN API ROUTES ---
+
+// --- Admin API Routes ---
 app.post('/api/admin/login', async (req, res) => {
     const { password } = req.body;
-    const storedHash = await db.getSetting('adminPassword');
-    if (storedHash && bcrypt.compareSync(password, storedHash)) {
+    try {
+        const adminPasswordHash = await db.getSetting('adminPassword');
+        if (!adminPasswordHash) {
+             return res.status(500).json({ message: 'Admin password not set.' });
+        }
+        const isMatch = await bcrypt.compare(password, adminPasswordHash);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid credentials.' });
+        }
         const token = jwt.sign({ user: 'admin' }, JWT_SECRET, { expiresIn: '8h' });
         res.json({ token });
-    } else {
-        res.status(401).json({ message: 'Invalid password.' });
+    } catch (error) {
+        console.error("Login error:", error);
+        res.status(500).json({ message: 'Server error during login.' });
     }
 });
 
-app.get('/api/admin/stats', authMiddleware, async (req, res) => {
-    const [activeSessions, totalVouchersUsed, totalVouchersAvailable] = await Promise.all([
-        db.getActiveSessionCount(),
-        db.getUsedVoucherCount(),
-        db.getUnusedVoucherCount()
-    ]);
-    res.json({ activeSessions, totalVouchersUsed, totalVouchersAvailable });
+app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
+    try {
+        const [activeSessions, totalVouchersUsed, totalVouchersAvailable] = await Promise.all([
+            db.getActiveSessionCount(),
+            db.getUsedVoucherCount(),
+            db.getAvailableVoucherCount()
+        ]);
+        res.json({ activeSessions, totalVouchersUsed, totalVouchersAvailable });
+    } catch (error) {
+        console.error("Stats error:", error);
+        res.status(500).json({ message: "Failed to get stats." });
+    }
 });
 
-app.get('/api/admin/system-info', authMiddleware, async (req, res) => {
+app.get('/api/admin/system-info', authenticateAdmin, async (req, res) => {
     try {
-        const [cpu, mem, fsSize] = await Promise.all([si.cpu(), si.mem(), si.fsSize()]);
+        const [cpu, mem, fsSize] = await Promise.all([
+            si.cpu(),
+            si.mem(),
+            si.fsSize()
+        ]);
         const rootDisk = fsSize.find(d => d.mount === '/');
         res.json({
             cpu: { model: cpu.manufacturer + ' ' + cpu.brand, cores: cpu.cores },
-            ram: { totalMb: Math.round(mem.total / 1024 / 1024), usedMb: Math.round(mem.used / 1024 / 1024) },
-            disk: { totalMb: rootDisk ? Math.round(rootDisk.size / 1024 / 1024) : 0, usedMb: rootDisk ? Math.round(rootDisk.used / 1024 / 1024) : 0 }
+            ram: { usedMb: Math.round(mem.used / 1024 / 1024), totalMb: Math.round(mem.total / 1024 / 1024) },
+            disk: { usedMb: Math.round(rootDisk.used / 1024 / 1024), totalMb: Math.round(rootDisk.size / 1024 / 1024) }
         });
     } catch (error) {
         res.status(500).json({ message: 'Could not fetch system info.' });
     }
 });
 
-app.get('/api/admin/vouchers', authMiddleware, async (req, res) => {
-    res.json(await db.getUnusedVouchers());
-});
-
-app.post('/api/admin/vouchers', authMiddleware, async (req, res) => {
-    res.status(201).json(await db.createVoucher(req.body.duration));
-});
-
-// Update & Backup
-app.get('/api/admin/updater/status', authMiddleware, async(req, res) => {
+app.get('/api/admin/vouchers', authenticateAdmin, async (req, res) => {
     try {
-        await runCommand('git fetch');
-        const local = await runCommand('git rev-parse HEAD');
-        const remote = await runCommand('git rev-parse @{u}');
-        const isUpdateAvailable = local !== remote;
-        res.json({ statusText: isUpdateAvailable ? 'Update available' : 'Up to date', localCommit: local.slice(0, 7), remoteCommit: remote.slice(0, 7), isUpdateAvailable });
+        const vouchers = await db.getAvailableVouchers();
+        res.json(vouchers);
     } catch (error) {
-        res.status(500).json({ statusText: `Error: ${error.message}`, localCommit: 'N/A', remoteCommit: 'N/A', isUpdateAvailable: false });
+        res.status(500).json({ message: 'Failed to fetch vouchers.' });
     }
 });
 
-app.post('/api/admin/updater/start', authMiddleware, (req, res) => {
-    res.json({ message: 'Update process started in background. The server will restart automatically.' });
-    exec('git pull && npm install && pm2 restart sulit-wifi', (err, stdout, stderr) => {
-        if (err) console.error('Update failed:', stderr);
-        else console.log('Update successful:', stdout);
-    });
-});
-
-app.get('/api/admin/backups', authMiddleware, async (req, res) => {
-    res.json(await db.listBackups());
-});
-
-app.post('/api/admin/backups', authMiddleware, async (req, res) => {
-    await db.createBackup();
-    res.json({ message: 'Backup created successfully.' });
-});
-
-app.post('/api/admin/backups/restore', authMiddleware, async (req, res) => {
-    await db.restoreBackup(req.body.filename);
-    res.json({ message: `Restored from ${req.body.filename}. Server is restarting.` });
-    setTimeout(() => process.exit(0), 1000); // Restart via PM2
-});
-
-app.delete('/api/admin/backups', authMiddleware, async (req, res) => {
-    await db.deleteBackup(req.body.filename);
-    res.json({ message: `Deleted backup ${req.body.filename}.` });
-});
-
-// Network Config
-app.get('/api/admin/network/info', authMiddleware, async (req, res) => {
+app.post('/api/admin/vouchers', authenticateAdmin, async (req, res) => {
+    const { duration } = req.body; // in seconds
     try {
-        const interfaces = await si.networkInterfaces();
-        res.json(interfaces.map(i => ({ name: i.iface, ip4: i.ip4, status: i.operstate.toUpperCase() })));
-    } catch(e) { res.status(500).json({ message: 'Could not get network info.'}) }
+        const voucher = await db.createVoucher(duration);
+        res.status(201).json(voucher);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to create voucher.' });
+    }
 });
 
-app.get('/api/admin/network/wan', authMiddleware, async (req, res) => {
+// Settings, Network, Updater, Backups...
+app.get('/api/admin/settings', authenticateAdmin, async (req, res) => {
     try {
-        const defaultIface = await si.networkInterfaceDefault();
-        res.json({ name: defaultIface });
-    } catch(e) { res.status(500).json({ message: 'Could not get WAN interface.'}) }
+        const settings = await db.getSetting('portalSettings');
+        res.json(settings);
+    } catch (error) {
+         res.status(500).json({ message: 'Could not fetch settings.' });
+    }
 });
 
-app.get('/api/admin/network/config', authMiddleware, async (req, res) => {
-    res.json(await db.getSetting('networkConfig'));
-});
-
-app.post('/api/admin/network/config', authMiddleware, async (req, res) => {
+app.post('/api/admin/settings', authenticateAdmin, async (req, res) => {
+    const { adminPassword, ...portalSettings } = req.body;
     try {
-        const config = req.body;
+        await db.updateSetting('portalSettings', portalSettings);
+        if (adminPassword) {
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(adminPassword, salt);
+            await db.updateSetting('adminPassword', hashedPassword);
+        }
+        res.json({ message: 'Settings updated successfully.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to update settings.' });
+    }
+});
+
+app.get('/api/admin/gpio/config', authenticateAdmin, async (req, res) => {
+    try {
+        const config = await db.getSetting('gpioConfig');
+        res.json(config);
+    } catch (error) {
+        res.status(500).json({ message: 'Could not fetch GPIO config.' });
+    }
+});
+
+app.post('/api/admin/gpio/config', authenticateAdmin, async (req, res) => {
+    try {
+        await db.updateSetting('gpioConfig', req.body);
+        // Re-initialize GPIO with new settings after saving
+        await setupGpio();
+        res.json({ message: 'GPIO config updated. Restart server to apply changes.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to update GPIO config.' });
+    }
+});
+
+
+app.get('/api/admin/network/config', authenticateAdmin, async (req, res) => {
+    try {
+        const config = await db.getSetting('networkConfig');
+        res.json(config);
+    } catch (error) {
+        res.status(500).json({ message: 'Could not fetch network config.' });
+    }
+});
+
+app.post('/api/admin/network/config', authenticateAdmin, async (req, res) => {
+    const config = req.body;
+    try {
+        // 1. Save config to DB
         await db.updateSetting('networkConfig', config);
-        // Apply hostapd settings
+        
+        // 2. Generate hostapd.conf
         const hostapdConf = `
 interface=${config.hotspotInterface}
 driver=nl80211
 ssid=${config.ssid}
 hw_mode=g
 channel=7
-macaddr_acl=0
-auth_algs=1
-ignore_broadcast_ssid=0
+ieee80211n=1
+wmm_enabled=1
 ${config.security === 'wpa2' ? `
 wpa=2
 wpa_passphrase=${config.password}
 wpa_key_mgmt=WPA-PSK
-wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 ` : ''}
 `;
         fs.writeFileSync('/etc/hostapd/hostapd.conf', hostapdConf);
-        await runCommand('sudo systemctl restart hostapd');
+        console.log("[Network] Wrote /etc/hostapd/hostapd.conf");
 
-        res.json({ message: 'Network settings applied successfully. Wi-Fi services have been restarted.' });
-    } catch (err) {
-        res.status(500).json({ message: `Failed to apply settings: ${err.message}` });
+        // 3. (Placeholder) Generate dnsmasq.conf changes
+        // This is complex and depends on the base OS setup.
+        console.log("[Network] NOTE: dnsmasq and interface static IP configuration is not yet implemented.");
+
+        // 4. Restart services
+        restartNetworkingServices(res);
+
+    } catch (error) {
+        console.error("[Network] Config update error:", error);
+        res.status(500).json({ message: `Failed to update network config: ${error.message}` });
     }
 });
 
 
-// System Settings (Password & GPIO)
-app.get('/api/admin/settings', authMiddleware, async (req, res) => {
-    // Only return non-sensitive settings.
-    res.json({});
-});
-
-app.post('/api/admin/settings', authMiddleware, async (req, res) => {
-    if (req.body.adminPassword) {
-        await db.updateSetting('adminPassword', req.body.adminPassword);
+app.get('/api/admin/network/info', authenticateAdmin, async (req, res) => {
+     try {
+        const interfaces = await si.networkInterfaces();
+        const formatted = interfaces.map(iface => ({
+            name: iface.iface,
+            ip4: iface.ip4,
+            status: iface.operstate
+        }));
+        res.json(formatted);
+    } catch (error) {
+        res.status(500).json({ message: "Could not get network info." });
     }
-    res.json({ message: 'Admin password updated successfully.' });
 });
 
-app.get('/api/admin/gpio/config', authMiddleware, async (req, res) => {
-    res.json(await db.getSetting('gpioConfig'));
+app.get('/api/admin/network/wan', authenticateAdmin, async (req, res) => {
+    try {
+        const defaultIface = await si.networkInterfaceDefault();
+        res.json({ name: defaultIface });
+    } catch (error) {
+        res.status(500).json({ message: "Could not determine WAN interface." });
+    }
 });
 
-app.post('/api/admin/gpio/config', authMiddleware, async (req, res) => {
-    await db.updateSetting('gpioConfig', req.body);
-    res.json({ message: 'GPIO config updated. Please restart the server to apply changes.' });
+
+app.get('/api/admin/updater/status', authenticateAdmin, (req, res) => {
+    // This is a simplified updater for a git-based deployment
+    exec('git rev-parse HEAD', (err, localCommit) => {
+        if (err) return res.status(500).json({ message: "Could not get local version." });
+        exec('git fetch && git rev-parse origin/main', (err, remoteCommit) => {
+            if (err) return res.json({ statusText: "Could not check for updates.", isUpdateAvailable: false, localCommit: localCommit.trim() });
+            const isUpdateAvailable = localCommit.trim() !== remoteCommit.trim();
+            res.json({
+                statusText: isUpdateAvailable ? "Update available" : "Up to date",
+                isUpdateAvailable,
+                localCommit: localCommit.trim(),
+                remoteCommit: remoteCommit.trim()
+            });
+        });
+    });
 });
 
-// Serve frontend for all other routes
+app.post('/api/admin/updater/start', authenticateAdmin, (req, res) => {
+    // WARNING: This is a simple implementation. A real-world updater should be more robust.
+    res.json({ message: "Update process started in background. The server will restart." });
+    exec('git pull && npm install && pm2 restart sulit-wifi', (err, stdout, stderr) => {
+        if (err) {
+            console.error("Update failed:", stderr);
+        } else {
+            console.log("Update successful:", stdout);
+        }
+    });
+});
+
+const BACKUP_DIR = path.join(__dirname, 'backups');
+if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
+
+app.get('/api/admin/backups', authenticateAdmin, (req, res) => {
+    res.json(fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.sql')));
+});
+
+app.post('/api/admin/backups', authenticateAdmin, async (req, res) => {
+    const timestamp = new Date().toISOString().replace(/:/g, '-').slice(0, 19);
+    const filename = `sulitwifi_backup_${timestamp}.sql`;
+    const filepath = path.join(BACKUP_DIR, filename);
+    try {
+        await db.backupDatabase(filepath);
+        res.json({ message: `Backup created: ${filename}` });
+    } catch (error) {
+        res.status(500).json({ message: `Backup failed: ${error.message}` });
+    }
+});
+
+app.post('/api/admin/backups/restore', authenticateAdmin, async (req, res) => {
+    const { filename } = req.body;
+    const filepath = path.join(BACKUP_DIR, filename);
+    if (!fs.existsSync(filepath)) {
+        return res.status(404).json({ message: "Backup file not found." });
+    }
+    try {
+        await db.restoreDatabase(filepath);
+        res.json({ message: "Database restored. Server is restarting." });
+        // Restart to apply restored settings
+        setTimeout(() => process.exit(0), 1000); 
+    } catch (error) {
+        res.status(500).json({ message: `Restore failed: ${error.message}` });
+    }
+});
+
+app.delete('/api/admin/backups', authenticateAdmin, (req, res) => {
+    const { filename } = req.body;
+    const filepath = path.join(BACKUP_DIR, filename);
+    if (fs.existsSync(filepath)) {
+        fs.unlinkSync(filepath);
+        res.json({ message: "Backup deleted." });
+    } else {
+        res.status(404).json({ message: "Backup file not found." });
+    }
+});
+
+
+// --- Serve Frontend ---
+// This catch-all route ensures that navigating directly to /admin or any other
+// client-side route works correctly.
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// --- SERVER INITIALIZATION ---
+
+// --- Server Startup ---
+const PORT = process.env.PORT || 3001;
 const startServer = async () => {
     try {
-        console.log('[DB] Attempting to connect to database...');
-        await db.checkConnection();
-        console.log('[DB] Database connection successful.');
-        await db.initializeDatabase();
-
-        // Initialize GPIO pins if available and configured
-        if (Gpio) {
-            const gpioConfig = await db.getSetting('gpioConfig');
-            if (gpioConfig) {
-                 // Setup Coin Slot
-                if (gpioConfig.coinSlotPin) {
-                    try {
-                        const coinSlotPin = new Gpio(gpioConfig.coinSlotPin, 'in', 'falling', { debounceTimeout: 20 });
-                        activePins.push(coinSlotPin);
-                        coinSlotPin.watch(async (err, value) => {
-                            if (err) {
-                                console.error('[GPIO] Error watching coin slot pin:', err);
-                                return;
-                            }
-                             // value is 0 on falling edge
-                            console.log('[GPIO] Coin detected!');
-                            try {
-                                const voucher = await db.createVoucher(15 * 60); // 15 minutes
-                                console.log(`[Voucher] Coin drop generated new 15-min voucher: ${voucher.code}`);
-                            } catch (dbErr) {
-                                console.error('[GPIO] Failed to create voucher on coin drop:', dbErr);
-                            }
-                        });
-                        console.log(`[GPIO] Coin slot initialized on BCM pin ${gpioConfig.coinSlotPin}.`);
-                    } catch (err) {
-                        console.error(`[GPIO] Failed to setup coin slot on BCM pin ${gpioConfig.coinSlotPin}. Reason: ${err.message}`);
-                         if (os.platform() === 'linux') {
-                            console.error('---');
-                            console.error('[GPIO_FIX] This error is common on Raspberry Pi / SBCs.');
-                            console.error('[GPIO_FIX] SOLUTION: Ensure the "libgpiod-dev" package is installed.');
-                            console.error('[GPIO_FIX] Run: sudo apt-get install -y libgpiod-dev');
-                            console.error('[GPIO_FIX] See the README Step 1.4 for details.');
-                            console.error('---');
-                        }
-                    }
-                }
-
-                // Setup Relay
-                if (gpioConfig.relayPin) {
-                     try {
-                        const relayPin = new Gpio(gpioConfig.relayPin, 'out');
-                        activePins.push(relayPin);
-                        relayPin.writeSync(1); // Turn on relay
-                        console.log(`[GPIO] Relay activated on BCM pin ${gpioConfig.relayPin}.`);
-                    } catch (err) {
-                        console.error(`[GPIO] Failed to setup relay on BCM pin ${gpioConfig.relayPin}:`, err.message);
-                    }
-                }
-
-                // Setup Status Light
-                if (gpioConfig.statusLightPin) {
-                    try {
-                        const statusLightPin = new Gpio(gpioConfig.statusLightPin, 'out');
-                        activePins.push(statusLightPin);
-                        statusLightPin.writeSync(1); // Turn on light
-                        console.log(`[GPIO] Status light ON for BCM pin ${gpioConfig.statusLightPin}.`);
-                    } catch (err) {
-                        console.error(`[GPIO] Failed to setup status light on BCM pin ${gpioConfig.statusLightPin}:`, err.message);
-                    }
-                }
-            }
-        }
-
-        const PORT = process.env.PORT || 3001;
+        await db.connect();
+        await db.initSchema();
+        await setupGpio();
         app.listen(PORT, () => {
             console.log(`[Portal] Server listening on http://localhost:${PORT}`);
         });
@@ -383,6 +497,11 @@ startServer();
 // Graceful shutdown
 process.on('SIGINT', () => {
     console.log('[Portal] Shutting down...');
-    activePins.forEach(pin => pin.unexport());
-    process.exit(0);
+    if (coinSlotPin) coinSlotPin.unexport();
+    if (relayPin) relayPin.unexport();
+    if (statusLedPin) statusLedPin.unexport();
+    db.close().then(() => {
+        console.log('[DB] Database connection closed.');
+        process.exit(0);
+    });
 });

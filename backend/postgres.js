@@ -1,8 +1,8 @@
 
 const { Pool } = require('pg');
 const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const { promisify } = require('util');
+const execPromise = promisify(exec);
 const bcrypt = require('bcryptjs');
 
 const pool = new Pool({
@@ -13,220 +13,207 @@ const pool = new Pool({
     port: process.env.PGPORT || 5432,
 });
 
-const query = (text, params) => pool.query(text, params);
-
-const checkConnection = async () => {
+const connect = async () => {
     let retries = 5;
     while (retries) {
         try {
-            console.log(`[DB] Attempting to connect to database (attempt ${6 - retries}/5)...`);
-            const client = await pool.connect();
-            client.release();
-            return;
+            await pool.connect();
+            console.log('[DB] Database connection successful.');
+            break;
         } catch (err) {
             console.error(`[DB] Connection attempt ${6 - retries} failed. Retrying in 5 seconds...`);
-            if (err.code === '28P01') {
-                console.error('[Reason] Authentication failed. Please check the PGPASSWORD in your .env file.');
-            } else if (err.code === '3D000') {
-                 console.error(`[Reason] Database "${process.env.PGDATABASE || 'sulitwifi'}" does not exist.`);
-            }
             retries -= 1;
             if (retries === 0) {
-                console.error('[FATAL] Could not connect to the database after multiple retries.');
-                throw err;
+                 console.error('[FATAL] Could not connect to the database after multiple retries.');
+                 console.error('[Details]:', err.message);
+                 if (err.code === '28P01') {
+                    console.error('[Reason] Authentication failed. Please check the PGPASSWORD in your .env file.');
+                 } else if (err.code === '3D000') {
+                    console.error('[Reason] Database "sulitwifi" does not exist. Please run the setup commands in the README.');
+                 }
+                 throw err;
             }
             await new Promise(res => setTimeout(res, 5000));
         }
     }
 };
 
-const initializeDatabase = async () => {
-    // --- Initial Schema Creation ---
-    await query(`
+const columnExists = async (tableName, columnName) => {
+    const res = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = $1 AND column_name = $2
+    `, [tableName, columnName]);
+    return res.rowCount > 0;
+};
+
+
+const initSchema = async () => {
+    console.log('[DB] Applying necessary database schema updates...');
+    
+    await pool.query(`
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
-            value JSONB NOT NULL
+            value JSONB
         );
         CREATE TABLE IF NOT EXISTS vouchers (
-            code TEXT PRIMARY KEY,
-            duration INT NOT NULL,
-            is_used BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            id SERIAL PRIMARY KEY,
+            code TEXT UNIQUE NOT NULL,
+            duration INTEGER NOT NULL,
+            type TEXT DEFAULT 'VOUCHER',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            is_used BOOLEAN DEFAULT FALSE
         );
         CREATE TABLE IF NOT EXISTS sessions (
-            ip_address TEXT PRIMARY KEY,
-            expires_at TIMESTAMPTZ NOT NULL,
-            voucher_code TEXT REFERENCES vouchers(code),
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            id SERIAL PRIMARY KEY,
+            mac_address TEXT UNIQUE NOT NULL,
+            start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+            end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+            voucher_code TEXT
         );
     `);
-    
-    // --- Schema Migrations ---
-    // This section safely patches older database schemas without losing data.
-    try {
-        console.log('[DB] Applying necessary database schema updates...');
-        await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;');
-        await query('ALTER TABLE sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
-        await query('ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();');
-        // FIX: This was the missing migration that caused the "is_used" column error.
-        await query('ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS is_used BOOLEAN DEFAULT FALSE;');
-        console.log('[DB] Schema updates applied successfully.');
-    } catch (err) {
-        console.error('[DB] Could not apply schema updates. This might happen if the database user lacks ALTER permissions.', err);
+
+    // --- Non-destructive Migrations ---
+    if (!await columnExists('vouchers', 'is_used')) {
+        await pool.query('ALTER TABLE vouchers ADD COLUMN is_used BOOLEAN DEFAULT FALSE;');
+        console.log('[DB] Schema updated: Added "is_used" column to vouchers.');
+    }
+     if (!await columnExists('vouchers', 'created_at')) {
+        await pool.query('ALTER TABLE vouchers ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;');
+        console.log('[DB] Schema updated: Added "created_at" column to vouchers.');
+    }
+     if (!await columnExists('sessions', 'expires_at')) { // Example of a future migration
+        // await pool.query('ALTER TABLE sessions ADD COLUMN expires_at TIMESTAMP;');
     }
     
     // Seed default settings if they don't exist
-    const defaultSettings = {
-        adminPassword: bcrypt.hashSync('admin', 10),
-        networkConfig: {
-            hotspotInterface: 'wlan0',
-            ssid: 'SULIT WIFI by AJC',
-            security: 'open',
-            password: '',
-            hotspotIpAddress: '192.168.10.1',
-            hotspotDhcpServer: { enabled: true, start: '192.168.10.100', end: '192.168.10.200', lease: '12h' }
-        },
-        gpioConfig: {
-            coinSlotPin: 2, // User requested default
-            relayPin: null,
-            statusLightPin: null
-        }
-    };
+    const settings = await getSetting('adminPassword');
+    if (!settings) {
+        console.log('[DB] Seeding default settings...');
+        const salt = await bcrypt.genSalt(10);
+        const defaultPassword = await bcrypt.hash('admin', salt);
+        await updateSetting('adminPassword', defaultPassword);
+        
+        await updateSetting('portalSettings', {
+            portalTitle: 'SULIT WIFI Portal',
+            coinSlotEnabled: true,
+            coinPulseValue: 15, // minutes
+        });
+        
+        await updateSetting('networkConfig', {
+             hotspotInterface: "wlan0",
+             ssid: "SULIT WIFI Hotspot",
+             security: "open",
+             password: "",
+             hotspotIpAddress: "192.168.10.1",
+             hotspotDhcpServer: {
+                 enabled: true,
+                 start: "192.168.10.100",
+                 end: "192.168.10.200",
+                 lease: "12h"
+             }
+        });
+        
+        await updateSetting('gpioConfig', {
+            coinPin: 2, // Default to BCM 2
+            relayPin: 0,
+            statusLedPin: 0,
+            coinSlotActiveLow: true,
+        });
 
-    for (const [key, value] of Object.entries(defaultSettings)) {
-        await query(`
-            INSERT INTO settings (key, value) VALUES ($1, $2)
-            ON CONFLICT (key) DO NOTHING;
-        `, [key, JSON.stringify(value)]);
     }
+    console.log('[DB] Schema updates applied successfully.');
 };
 
 const getSetting = async (key) => {
-    const { rows } = await query('SELECT value FROM settings WHERE key = $1', [key]);
-    return rows.length ? rows[0].value : null;
+    const res = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+    return res.rows.length > 0 ? res.rows[0].value : null;
 };
 
 const updateSetting = async (key, value) => {
-    if (key === 'adminPassword' && typeof value === 'string') {
-        value = bcrypt.hashSync(value, 10);
-    }
-    await query(`
-        INSERT INTO settings (key, value) VALUES ($1, $2)
-        ON CONFLICT (key) DO UPDATE SET value = $2;
-    `, [key, JSON.stringify(value)]);
+    await pool.query(
+        'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+        [key, value]
+    );
 };
 
-const generateVoucherCode = () => 'SULIT-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-
-const createVoucher = async (duration) => {
-    const code = generateVoucherCode();
-    await query('INSERT INTO vouchers (code, duration) VALUES ($1, $2)', [code, duration]);
-    return { code, duration, isUsed: false };
+const createVoucher = async (duration, type = 'VOUCHER') => {
+    const code = `SULIT-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    const res = await pool.query(
+        'INSERT INTO vouchers (code, duration, type) VALUES ($1, $2, $3) RETURNING *',
+        [code, duration, type]
+    );
+    return res.rows[0];
 };
 
-const activateVoucher = async (code, ipAddress) => {
-    const { rows } = await query('SELECT * FROM vouchers WHERE code = $1', [code]);
-    if (!rows.length) throw new Error('Voucher not found.');
-    if (rows[0].is_used) throw new Error('Voucher has already been used.');
-    
-    const { duration } = rows[0];
-    await query('UPDATE vouchers SET is_used = TRUE WHERE code = $1', [code]);
-    await createSession(ipAddress, duration, code);
-    return { duration };
+const getVoucherByCode = async (code) => {
+     const res = await pool.query('SELECT * FROM vouchers WHERE code = $1', [code]);
+     return res.rows[0];
 };
 
-const createSession = async (ipAddress, duration, voucherCode = null) => {
-    const expiresAt = new Date(Date.now() + duration * 1000);
-    await query(`
-        INSERT INTO sessions (ip_address, expires_at, voucher_code) VALUES ($1, $2, $3)
-        ON CONFLICT (ip_address) DO UPDATE SET expires_at = $2, voucher_code = $3;
-    `, [ipAddress, expiresAt, voucherCode]);
-    return { duration };
+const markVoucherAsUsed = async (code) => {
+    await pool.query('UPDATE vouchers SET is_used = TRUE WHERE code = $1', [code]);
 };
 
-const getSessionByIp = async (ipAddress) => {
-    const { rows } = await query('SELECT * FROM sessions WHERE ip_address = $1', [ipAddress]);
-    if (!rows.length || new Date(rows[0].expires_at) < new Date()) {
-        return null;
-    }
-    return { ipAddress: rows[0].ip_address, expiresAt: new Date(rows[0].expires_at) };
+const getAvailableVouchers = async () => {
+    const res = await pool.query('SELECT code, duration FROM vouchers WHERE is_used = FALSE ORDER BY created_at DESC');
+    return res.rows;
 };
 
-const deleteSessionByIp = (ipAddress) => query('DELETE FROM sessions WHERE ip_address = $1', [ipAddress]);
 const getActiveSessionCount = async () => {
-    const { rows } = await query("SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()");
-    return parseInt(rows[0].count, 10);
+    // This is a placeholder as session management is handled by nodogsplash
+    return 0;
 };
+
 const getUsedVoucherCount = async () => {
-    const { rows } = await query("SELECT COUNT(*) FROM vouchers WHERE is_used = TRUE");
-    return parseInt(rows[0].count, 10);
-};
-const getUnusedVoucherCount = async () => {
-    const { rows } = await query("SELECT COUNT(*) FROM vouchers WHERE is_used = FALSE");
-    return parseInt(rows[0].count, 10);
-};
-const getUnusedVouchers = async () => {
-    const { rows } = await query("SELECT code, duration, is_used FROM vouchers WHERE is_used = FALSE ORDER BY created_at DESC");
-    return rows.map(r => ({ ...r, isUsed: r.is_used }));
+    const res = await pool.query('SELECT COUNT(*) FROM vouchers WHERE is_used = TRUE');
+    return parseInt(res.rows[0].count, 10);
 };
 
-// --- Backup & Restore ---
-const BACKUP_DIR = path.join(__dirname, '..', 'backups');
-if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
-
-const createBackup = () => {
-    const timestamp = new Date().toISOString().replace(/:/g, '-');
-    const filename = `sulitwifi-backup-${timestamp}.sql`;
-    const filepath = path.join(BACKUP_DIR, filename);
-    const command = `pg_dump -U ${process.env.PGUSER || 'sulituser'} -h ${process.env.PGHOST || 'localhost'} -d ${process.env.PGDATABASE || 'sulitwifi'} > "${filepath}"`;
-    return new Promise((resolve, reject) => {
-        exec(command, { env: { ...process.env } }, (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
+const getAvailableVoucherCount = async () => {
+    const res = await pool.query('SELECT COUNT(*) FROM vouchers WHERE is_used = FALSE');
+    return parseInt(res.rows[0].count, 10);
 };
 
-const restoreBackup = (filename) => {
-    const filepath = path.join(BACKUP_DIR, filename);
-    if (!fs.existsSync(filepath)) throw new Error('Backup file not found.');
-    const command = `psql -U ${process.env.PGUSER || 'sulituser'} -h ${process.env.PGHOST || 'localhost'} -d ${process.env.PGDATABASE || 'sulitwifi'} < "${filepath}"`;
-    return new Promise((resolve, reject) => {
-        exec(command, { env: { ...process.env } }, (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
+const backupDatabase = async (filepath) => {
+    const pgUser = process.env.PGUSER || 'sulituser';
+    const pgDb = process.env.PGDATABASE || 'sulitwifi';
+    const command = `pg_dump -U ${pgUser} -d ${pgDb} -F c -b -v -f ${filepath}`;
+    
+    // pg_dump might ask for a password if PGPASSWORD is not set in the shell env
+    // So we set it for the child process.
+    const env = { ...process.env, PGPASSWORD: process.env.PGPASSWORD };
+
+    await execPromise(command, { env });
 };
 
-const listBackups = () => {
-    return fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.sql')).sort().reverse();
+
+const restoreDatabase = async (filepath) => {
+    const pgUser = process.env.PGUSER || 'sulituser';
+    const pgDb = process.env.PGDATABASE || 'sulitwifi';
+    const command = `pg_restore -U ${pgUser} -d ${pgDb} --clean --if-exists ${filepath}`;
+     const env = { ...process.env, PGPASSWORD: process.env.PGPASSWORD };
+    await execPromise(command, { env });
 };
 
-const deleteBackup = (filename) => {
-    const filepath = path.join(BACKUP_DIR, filename);
-    if (!fs.existsSync(filepath)) throw new Error('Backup file not found.');
-    fs.unlinkSync(filepath);
-};
 
+const close = async () => {
+    await pool.end();
+};
 
 module.exports = {
-    query,
-    checkConnection,
-    initializeDatabase,
+    connect,
+    initSchema,
     getSetting,
     updateSetting,
     createVoucher,
-    activateVoucher,
-    createSession,
-    getSessionByIp,
-    deleteSessionByIp,
+    getVoucherByCode,
+    markVoucherAsUsed,
+    getAvailableVouchers,
     getActiveSessionCount,
     getUsedVoucherCount,
-    getUnusedVoucherCount,
-    getUnusedVouchers,
-    createBackup,
-    restoreBackup,
-    listBackups,
-    deleteBackup,
+    getAvailableVoucherCount,
+    backupDatabase,
+    restoreDatabase,
+    close,
 };

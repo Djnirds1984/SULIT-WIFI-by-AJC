@@ -15,32 +15,33 @@ export interface SystemInfo {
         cores: number;
     };
     ram: {
-        totalMb: number;
         usedMb: number;
+        totalMb: number;
     };
     disk: {
-        totalMb: number;
         usedMb: number;
+        totalMb: number;
     };
 }
 
 export interface Voucher {
     code: string;
     duration: number; // in seconds
-    isUsed: boolean;
+    is_used: boolean;
+    created_at: string;
 }
 
 export interface UpdaterStatus {
     statusText: string;
+    isUpdateAvailable: boolean;
     localCommit: string;
     remoteCommit: string | null;
-    isUpdateAvailable: boolean;
 }
 
 export interface NetworkInterface {
     name: string;
-    ip4: string | null;
-    status: 'UP' | 'DOWN' | 'UNKNOWN';
+    ip4: string;
+    status: string;
 }
 
 export interface NetworkConfig {
@@ -57,14 +58,16 @@ export interface NetworkConfig {
     };
 }
 
-export interface GpioConfig {
-    coinSlotPin: number | null;
-    relayPin: number | null;
-    statusLightPin: number | null;
+export interface PortalSettings {
+    adminPassword?: string; // Only used for sending, not receiving
+    coinSlotEnabled: boolean;
+    coinPulseValue: number; // e.g. minutes per coin
+    portalTitle: string;
 }
 
-// FIX: Removed geminiApiKey as per guideline to use environment variables.
-export interface Settings {
-    adminPassword?: string; // Optional for update payload
-    ssid?: string;
+export interface GpioConfig {
+    coinPin: number;
+    relayPin: number;
+    statusLedPin: number;
+    coinSlotActiveLow: boolean;
 }
