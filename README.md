@@ -144,11 +144,23 @@ The `onoff` package is used for the physical coin slot. It is an **optional depe
 
 ### 4.3. Permissions
 
-Add your user to the `gpio` group and reboot.
-```bash
-sudo usermod -aG gpio <your-username>
-sudo reboot
-```
+The user running the application needs permission to access the GPIO hardware.
+
+1.  **Create the `gpio` Group**: On some systems, the `gpio` group may not exist by default. Run the following command to create it if it's missing.
+    ```bash
+    sudo groupadd --force gpio
+    ```
+    > The `--force` flag prevents an error if the group already exists.
+
+2.  **Add User to Group**: Add your user to the group. Replace `<your-username>` with your actual username (e.g., `pi`).
+    ```bash
+    sudo usermod -aG gpio <your-username>
+    ```
+
+3.  **Reboot**: A reboot is required for the group changes to take full effect.
+    ```bash
+    sudo reboot
+    ```
 
 ---
 
@@ -166,10 +178,10 @@ sudo apt-get install -y nginx ifupdown
 The `nodogsplash` package is often not available in default OS repositories. The most reliable way to install it is by compiling it from source.
 
 1.  **Install Build Dependencies**:
-    The `make` command and other tools are required to compile the software. Install them along with the Nodogsplash library dependency.
+    Nodogsplash requires a few development libraries to be compiled from source. This command installs the C++ compiler (`build-essential`), a web server library (`libmicrohttpd-dev`), and a JSON parsing library (`libjson-c-dev`).
     ```bash
     sudo apt-get update
-    sudo apt-get install -y build-essential libmicrohttpd-dev
+    sudo apt-get install -y build-essential libmicrohttpd-dev libjson-c-dev
     ```
 
 2.  **Clone the Official Repository**:
@@ -294,6 +306,11 @@ With the Nginx configuration, the admin panel is accessible on port `80` from an
 ---
 
 ## Troubleshooting
+
+### Error: `SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string`
+This is a critical database connection error.
+*   **Cause**: This error occurs when the server starts but the `PGPASSWORD` variable is missing or not set. The database driver requires a password string but received an undefined value.
+*   **Solution**: Check your `.env` file in the project's root directory. Make sure it exists and that it contains a valid `PGPASSWORD=your_password_here` line. If the file is missing, create it by following Step 3.2 in the setup guide.
 
 ### Error: `npm ERR! epoll@... install: node-gyp rebuild`
 This error occurs when installing the optional `onoff` dependency for the coin slot.

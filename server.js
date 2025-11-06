@@ -6,6 +6,15 @@ const { exec } = require('child_process');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 require('dotenv').config();
+
+// --- Pre-flight Environment Check ---
+if (typeof process.env.PGPASSWORD === 'undefined') {
+    console.error('\n[FATAL] The PGPASSWORD environment variable is not set.');
+    console.error('Please check your .env file in the project root and ensure it contains a line like: PGPASSWORD=your_secure_password');
+    console.error('The application cannot connect to the database without a password.\n');
+    process.exit(1);
+}
+
 const DB = require('./backend/postgres.js');
 
 // --- Server Configuration ---
