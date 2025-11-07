@@ -58,6 +58,7 @@ const Updater: React.FC = () => {
             try {
                 const res = await startUpdate();
                 setMessage(res.message);
+                // Don't set isProcessing to false, as the server will restart
             } catch (err: any) {
                 setError(err.message);
                 setIsProcessing(false); // Only set to false on error
@@ -127,10 +128,33 @@ const Updater: React.FC = () => {
 
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold text-gray-700 mb-4">Software Update</h2>
-                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                     <p className="font-bold text-yellow-800">Feature Not Implemented</p>
-                     <p className="text-yellow-700">The updater is a placeholder and is not yet functional.</p>
-                 </div>
+                {isLoadingStatus ? (
+                    <p>Checking for updates...</p>
+                ) : status ? (
+                    <div className="space-y-4">
+                        <div className={`p-4 rounded-md ${status.isUpdateAvailable ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
+                            <p className={`font-bold ${status.isUpdateAvailable ? 'text-blue-800' : 'text-green-800'}`}>
+                                {status.statusText}
+                            </p>
+                        </div>
+                        <div className="text-sm text-gray-600 space-y-1">
+                            <p><strong>Current Version:</strong> <span className="font-mono">{status.localCommit.substring(0, 7)}</span></p>
+                            {status.remoteCommit && status.remoteCommit !== 'N/A' && (
+                                <p><strong>Latest Version:</strong> <span className="font-mono">{status.remoteCommit.substring(0, 7)}</span></p>
+                            )}
+                        </div>
+                        <button
+                            onClick={handleUpdate}
+                            disabled={!status.isUpdateAvailable || isProcessing}
+                            className="flex items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                        >
+                            <CloudArrowDownIcon className="h-5 w-5 mr-2" />
+                            {isProcessing ? 'Updating...' : 'Update Now'}
+                        </button>
+                    </div>
+                ) : (
+                    <p className="text-red-500">Could not retrieve update status. Ensure 'git' is installed on the server.</p>
+                )}
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-md">

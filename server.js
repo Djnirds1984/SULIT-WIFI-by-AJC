@@ -7,6 +7,8 @@ const jwt = require('jsonwebtoken');
 const si = require('systeminformation');
 const fs = require('fs');
 const { exec } = require('child_process');
+const { promisify } = require('util');
+const execPromise = promisify(exec);
 const db = require('./backend/postgres');
 
 const app = express();
@@ -325,14 +327,78 @@ app.post('/api/admin/backups/restore', authMiddleware, async (req, res) => {
     }
 });
 
-// Placeholder for Updater
-app.get('/api/admin/updater/status', authMiddleware, (req, res) => {
-     res.status(501).json({ statusText: 'Updater not implemented', isUpdateAvailable: false, localCommit: 'N/A' });
+app.get('/api/admin/updater/status', authMiddleware, async (req, res) => {
+    try {
+        await execPromise('git fetch'); // Fetch latest data from remote
+        const { stdout: localCommit } = await execPromise('git rev-parse HEAD');
+        const { stdout: remoteCommit } = await execPromise('git rev-parse @{u}'); // Get upstream commit
+
+        const isUpdateAvailable = localCommit.trim() !== remoteCommit.trim();
+        res.json({
+            statusText: isUpdateAvailable ? 'A new version is available.' : 'You are up to date.',
+            isUpdateAvailable,
+            localCommit: localCommit.trim(),
+            remoteCommit: remoteCommit.trim()
+        });
+    } catch (error) {
+        console.error('[UPDATER] Error checking status:', error);
+        res.status(500).json({ 
+            statusText: 'Could not check for updates. Is git installed and configured?', 
+            isUpdateAvailable: false, 
+            localCommit: 'N/A', 
+            remoteCommit: 'N/A' 
+        });
+    }
 });
 
-// Placeholder for Portal Editor
-app.get('/api/admin/portal/html', authMiddleware, (req, res) => {
-    res.status(501).json({ html: '<h1>Portal Editor Not Implemented</h1>' });
+app.post('/api/admin/updater/start', authMiddleware, (req, res) => {
+    console.log('[UPDATER] Starting update process...');
+    // Execute update script without waiting for it to complete
+    exec('git pull && npm install && pm2 restart sulit-wifi', (error, stdout, stderr) => {
+        if (error) {
+            console.error(`[UPDATER] Exec error: ${error.message}`);
+            return;
+        }
+        if (stdout) console.log(`[UPDATER] stdout: ${stdout}`);
+        if (stderr) console.error(`[UPDATER] stderr: ${stderr}`);
+    });
+
+    res.json({ message: 'Update process started in the background. The server will restart shortly. Check `pm2 logs` for details.' });
+});
+
+
+app.get('/api/admin/portal/html', authMiddleware, async (req, res) => {
+    try {
+        const html = await db.getSetting('portalHtml');
+        res.json({ html: html || db.DEFAULT_PORTAL_HTML });
+    } catch (error) {
+        console.error('[PORTAL_EDITOR] Error getting HTML:', error);
+        res.status(500).json({ error: 'Could not load portal HTML.' });
+    }
+});
+
+app.post('/api/admin/portal/html', authMiddleware, async (req, res) => {
+    const { html } = req.body;
+    if (typeof html !== 'string') {
+        return res.status(400).json({ error: 'Invalid HTML content provided.' });
+    }
+    try {
+        await db.updateSetting('portalHtml', html);
+        res.json({ message: 'Portal HTML saved successfully.' });
+    } catch (error) {
+        console.error('[PORTAL_EDITOR] Error saving HTML:', error);
+        res.status(500).json({ error: 'Could not save portal HTML.' });
+    }
+});
+
+app.post('/api/admin/portal/reset', authMiddleware, async (req, res) => {
+    try {
+        const defaultHtml = await db.resetPortalHtml();
+        res.json({ message: 'Portal has been reset to default.', html: defaultHtml });
+    } catch (error) {
+        console.error('[PORTAL_EDITOR] Error resetting HTML:', error);
+        res.status(500).json({ error: 'Could not reset portal HTML.' });
+    }
 });
 
 

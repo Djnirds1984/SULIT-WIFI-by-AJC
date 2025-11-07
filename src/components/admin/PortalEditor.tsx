@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getPortalHtml, updatePortalHtml, resetPortalHtml } from '../../services/wifiService';
 import SaveIcon from '../icons/SaveIcon';
@@ -62,12 +63,12 @@ const PortalEditor: React.FC = () => {
     return (
         <div className="animate-fade-in space-y-6">
             <h1 className="text-3xl font-bold text-gray-800">Portal Editor</h1>
-
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                <p className="font-bold text-yellow-800">Feature Not Implemented</p>
-                <p className="text-yellow-700">This editor is a placeholder. Saving changes will not currently affect the user portal.</p>
-            </div>
             
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+                <p className="font-bold text-blue-800">Note</p>
+                <p className="text-sm text-blue-700">This editor allows you to customize HTML content stored in the database. By default, this content is not displayed to the user, as the live portal is a dynamic React application. Further server customization is required to integrate this HTML.</p>
+            </div>
+
             {message && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">{message}</div>}
             {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">{error}</div>}
 

@@ -13,6 +13,27 @@ const pool = new Pool({
     port: process.env.PGPORT || 5432,
 });
 
+const DEFAULT_PORTAL_HTML = `<!-- 
+  Welcome to the SULIT WIFI Portal Editor!
+  
+  This is the default HTML content for your captive portal page.
+  The main application is a React Single Page App (SPA), so this
+  HTML is NOT currently rendered to the user by default.
+  
+  This editor is a functional tool to demonstrate how you
+  could save and load custom HTML content from the database.
+  
+  To make this content appear, you would need to modify the server
+  to serve this HTML instead of the React app's index.html, or
+  find a way to inject it into the React app itself.
+-->
+<div style="font-family: sans-serif; text-align: center; padding: 2em; color: #333;">
+  <h1>Welcome to SULIT WIFI!</h1>
+  <p>This is your default portal content.</p>
+  <p>You can edit this HTML in the Admin Panel under "Portal Editor".</p>
+</div>
+`;
+
 const connect = async () => {
     let retries = 5;
     while (retries) {
@@ -121,6 +142,7 @@ const initSchema = async () => {
             coinSlotActiveLow: true,
         });
 
+        await updateSetting('portalHtml', DEFAULT_PORTAL_HTML);
     }
     console.log('[DB] Schema updates applied successfully.');
 };
@@ -196,6 +218,10 @@ const restoreDatabase = async (filepath) => {
     await execPromise(command, { env });
 };
 
+const resetPortalHtml = async () => {
+    await updateSetting('portalHtml', DEFAULT_PORTAL_HTML);
+    return DEFAULT_PORTAL_HTML;
+};
 
 const close = async () => {
     await pool.end();
@@ -215,5 +241,7 @@ module.exports = {
     getAvailableVoucherCount,
     backupDatabase,
     restoreDatabase,
+    resetPortalHtml,
+    DEFAULT_PORTAL_HTML,
     close,
 };
