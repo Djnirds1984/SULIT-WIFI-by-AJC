@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Log to file and console
+LOG_FILE="/var/log/sulit-apply-network.log"
+mkdir -p /var/log || true
+touch "$LOG_FILE" || true
+echo "===== $(date '+%Y-%m-%d %H:%M:%S') Apply Network Start =====" >> "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 # SULIT WIFI: Apply hotspot network settings
 # This script configures the hotspot interface IP, DHCP (dnsmasq), and NAT.
 # It autodetects whether NetworkManager (nmcli) is available; otherwise, it
@@ -34,7 +41,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-log() { echo "[ApplyNetwork] $*"; }
+log() {
+  echo "[ApplyNetwork] $*"
+  if command -v logger >/dev/null 2>&1; then
+    logger -t sulit-apply "[ApplyNetwork] $*"
+  fi
+}
 
 prefix() { # return /24 prefix from IP like 10.0.0.1 -> 10.0.0
   IFS='.' read -r a b c _ <<<"$1"; echo "$a.$b.$c"; 

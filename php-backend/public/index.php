@@ -224,7 +224,7 @@ switch (true) {
         }
 
         $cmd = [
-            'sudo', $script,
+            'sudo', '/bin/bash', $script,
             '--iface', $iface,
             '--ssid', $ssid,
             '--security', $security,
@@ -245,10 +245,11 @@ switch (true) {
         $stderr = stream_get_contents($pipes[2]);
         foreach ($pipes as $p) fclose($p);
         $code = proc_close($proc);
+        $combined = trim($stdout . (strlen($stderr) ? "\nERR:\n" . $stderr : ''));
         if ($code !== 0) {
-            Response::json(['error' => 'Apply failed: ' . trim($stderr)], 500);
+            Response::json(['error' => 'Apply failed: ' . trim($stderr), 'log' => $combined], 500);
         }
-        Response::json(['message' => 'Network applied successfully.', 'log' => trim($stdout)]);
+        Response::json(['message' => 'Network applied successfully.', 'log' => $combined]);
         break;
 
     case $method === 'GET' && $uri === '/api/admin/network/info':
