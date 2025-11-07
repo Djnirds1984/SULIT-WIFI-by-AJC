@@ -4,7 +4,28 @@
 # Run this on your SBC (Raspberry Pi/Orange Pi)
 
 echo "=== GPIO Pin 2 I2C Disable Script ==="
-echo "This script will disable I2C to free up GPIO pin 2 for coin slot usage."
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[I2C] Disabling I2C to free GPIO 2/3 (SDA/SCL)"
+
+if [[ $EUID -ne 0 ]]; then
+  echo "[I2C] Please run as root (sudo)" >&2
+  exit 1
+fi
+
+CFG="/boot/config.txt"
+BACKUP="/boot/config.txt.bak.$(date +%Y%m%d-%H%M%S)"
+cp "$CFG" "$BACKUP"
+echo "[I2C] Backed up config to $BACKUP"
+
+# Comment out I2C dtparam lines
+sed -i -E 's/^(\s*)dtparam=i2c_arm=on/\1# dtparam=i2c_arm=on # disabled by disable-i2c.sh/g' "$CFG"
+sed -i -E 's/^(\s*)dtparam=i2c=on/\1# dtparam=i2c=on # disabled by disable-i2c.sh/g' "$CFG"
+
+echo "[I2C] I2C dtparams commented in $CFG"
+
+echo "[I2C] To apply changes, reboot now: sudo reboot"
 echo ""
 
 # Detect SBC type

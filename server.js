@@ -14,6 +14,7 @@ const db = require('./backend/postgres');
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-key-that-should-be-in-env';
+const DISABLE_GPIO = process.env.DISABLE_GPIO === 'true';
 
 // --- GPIO Setup ---
 let Gpio;
@@ -71,6 +72,19 @@ const setupGpio = async () => {
         return;
     }
     if (!Gpio) return;
+
+    // Allow forced disable via env var
+    if (DISABLE_GPIO) {
+        console.warn('[GPIO] DISABLE_GPIO=true; skipping all GPIO initialization.');
+        if (coinSlot) coinSlot.unexport();
+        if (coinPollInterval) {
+            clearInterval(coinPollInterval);
+            coinPollInterval = null;
+        }
+        if (relay) relay.unexport();
+        if (statusLed) statusLed.unexport();
+        return;
+    }
 
     // Get config once
     const gpioConfig = await db.getSetting('gpioConfig');
