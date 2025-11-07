@@ -31,25 +31,26 @@ try {
 const setupGpio = async () => {
     if (!Gpio) return;
 
-    try {
-        const gpioConfig = await db.getSetting('gpioConfig');
-        if (!gpioConfig) {
-            console.error('[GPIO] GPIO config not found in database.');
-            return;
-        }
+    // Get config once
+    const gpioConfig = await db.getSetting('gpioConfig');
+    if (!gpioConfig) {
+        console.error('[GPIO] GPIO config not found in database.');
+        return;
+    }
 
-        // Cleanup old pins before re-initializing
-        if (coinSlot) coinSlot.unexport();
-        if (relay) relay.unexport();
-        if (statusLed) statusLed.unexport();
-
-        // Setup Coin Slot
-        if (gpioConfig.coinPin > 0) {
+    // Cleanup old pins before re-initializing
+    if (coinSlot) coinSlot.unexport();
+    if (relay) relay.unexport();
+    if (statusLed) statusLed.unexport();
+    
+    // --- Setup Coin Slot Individually ---
+    if (gpioConfig.coinPin > 0) {
+        try {
             coinSlotPin = gpioConfig.coinPin;
             const activeLow = gpioConfig.coinSlotActiveLow !== false; // Default to true
-            coinSlot = new Gpio(coinSlotPin, 'in', 'rising', { 
+            coinSlot = new Gpio(coinSlotPin, 'in', 'rising', {
                 debounceTimeout: 100,
-                activeLow: activeLow 
+                activeLow: activeLow
             });
 
             coinSlot.watch(async (err, value) => {
@@ -67,34 +68,42 @@ const setupGpio = async () => {
                 }
             });
             console.log(`[GPIO] Coin slot configured on BCM pin ${coinSlotPin} (Active Low: ${activeLow}).`);
+        } catch (err) {
+            console.error(`[GPIO] Failed to setup Coin Slot on pin ${gpioConfig.coinPin}. Reason: ${err.message}`);
+            if (err.code === 'EINVAL') {
+                console.error(`[GPIO_FIX] This pin may be in use by another service (like I2C or SPI). Please check your SBC's pinout and kernel configuration.`);
+            }
         }
+    }
 
-        // Setup Relay
-        if (gpioConfig.relayPin > 0) {
+    // --- Setup Relay Individually ---
+    if (gpioConfig.relayPin > 0) {
+        try {
             relayPin = gpioConfig.relayPin;
             relay = new Gpio(relayPin, 'out');
             await relay.write(1); // Turn on relay
             console.log(`[GPIO] Relay configured and activated on BCM pin ${relayPin}.`);
+        } catch (err) {
+            console.error(`[GPIO] Failed to setup Relay on pin ${gpioConfig.relayPin}. Reason: ${err.message}`);
+            if (err.code === 'EINVAL') {
+                console.error(`[GPIO_FIX] This pin may be in use by another service. Please check your SBC's pinout and kernel configuration.`);
+            }
         }
+    }
 
-        // Setup Status LED
-        if (gpioConfig.statusLedPin > 0) {
+    // --- Setup Status LED Individually ---
+    if (gpioConfig.statusLedPin > 0) {
+        try {
             statusLedPin = gpioConfig.statusLedPin;
             statusLed = new Gpio(statusLedPin, 'out');
             await statusLed.write(1); // Turn on LED
             console.log(`[GPIO] Status LED configured and activated on BCM pin ${statusLedPin}.`);
+        } catch (err) {
+            console.error(`[GPIO] Failed to setup Status LED on pin ${gpioConfig.statusLedPin}. Reason: ${err.message}`);
+             if (err.code === 'EINVAL') {
+                console.error(`[GPIO_FIX] This pin may be in use by another service. Please check your SBC's pinout and kernel configuration.`);
+            }
         }
-
-    } catch (err) {
-         console.error(`[GPIO] Failed to setup GPIO. Reason: ${err.message}`);
-         if (err.code === 'EINVAL') {
-             console.error('---');
-             console.error('[GPIO_FIX] This error is common on Raspberry Pi / SBCs.');
-             console.error('[GPIO_FIX] SOLUTION: Ensure the "libgpiod-dev" package is installed.');
-             console.error('[GPIO_FIX] Run: sudo apt-get install -y libgpiod-dev');
-             console.error('[GPIO_FIX] See the README Step 1.4 for details.');
-             console.error('---');
-         }
     }
 };
 

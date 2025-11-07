@@ -306,10 +306,17 @@ With the Nginx configuration, the admin panel is accessible on port `80` from an
 
 ## Troubleshooting
 
-### GPIO Error: `Failed to setup coin slot ... EINVAL: invalid argument, write`
-This is a common and frustrating error on modern Raspberry Pi OS versions.
-*   **Cause**: The application does not have sufficient permission from the operating system to access the GPIO hardware device (`/dev/gpiochip*`).
-*   **Solution**: You must follow all steps in **Step 4.2: Permissions** exactly, especially Step 4.2.3 which creates the `udev` rule. This is a permanent fix that correctly sets hardware permissions on every boot. A reboot is required after applying the fix.
+### GPIO Error: `Failed to setup ... EINVAL: invalid argument, write`
+This is a common and frustrating error on modern SBCs like the Raspberry Pi. It can have several causes:
+
+*   **Cause 1: Missing System Library**: Your OS is missing `libgpiod-dev`, which is required for the GPIO library (`onoff`) to work correctly with modern Linux kernels.
+    *   **Solution**: Install the required library as described in **Step 1.4**: `sudo apt-get install -y libgpiod-dev`.
+
+*   **Cause 2: Hardware Pin Conflict**: The GPIO pin you selected in the Admin Panel is already being used by another system service (like I2C, SPI, or a 1-Wire sensor).
+    *   **Solution**: Check your SBC's pinout diagram (e.g., via `pinout` command on Raspberry Pi) to see if the pin has an alternate function. If it does, ensure that service is disabled or choose a different, dedicated GPIO pin in the Admin Settings. The new, more detailed server logs will tell you *which* pin is failing.
+
+*   **Cause 3: Insufficient Permissions**: The application does not have permission from the OS to access the GPIO hardware device (`/dev/gpiochip*`).
+    *   **Solution**: You must follow all steps in **Step 4.2: Permissions** exactly, especially Step 4.2.3 which creates the `udev` rule. This is a permanent fix that correctly sets hardware permissions on every boot. A reboot is required after applying the fix.
 
 ### Error: `FATAL: The PGPASSWORD environment variable is not set.`
 This is the most common setup error.
