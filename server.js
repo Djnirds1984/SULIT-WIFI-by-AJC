@@ -19,15 +19,56 @@ const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-key-that-should-be-i
 let Gpio;
 let coinSlot, relay, statusLed;
 
+// --- Mock GPIO for non-Linux environments ---
+const mockGpio = {
+    Gpio: class MockGpio {
+        constructor(pin, direction, edge, options) {
+            console.log(`[MOCK_GPIO] Initialized pin ${pin} (direction: ${direction}, edge: ${edge})`);
+            this.pin = pin;
+        }
+        watch(callback) {
+            console.log(`[MOCK_GPIO] Watching pin ${this.pin}`);
+            // Simulate a coin pulse every 15 seconds for testing
+            if (this.pin === (mockGpio.coinPin || 4)) { // Default to 4 if not set
+                setInterval(() => {
+                    console.log('[MOCK_GPIO] Simulating coin pulse...');
+                    callback(null, 1);
+                }, 15000);
+            }
+        }
+        write(value, callback) {
+            console.log(`[MOCK_GPIO] Wrote ${value} to pin ${this.pin}`);
+            if (callback) callback(null);
+        }
+        unexport() {
+            console.log(`[MOCK_GPIO] Unexported pin ${this.pin}`);
+        }
+    },
+    coinPin: 4, // Default mock pin
+};
+
+
 try {
-    Gpio = require('onoff').Gpio;
-    console.log('[GPIO] Native GPIO module loaded.');
+    // Only require onoff on Linux
+    if (process.platform === 'linux') {
+        Gpio = require('onoff').Gpio;
+        console.log('[GPIO] Native GPIO module loaded.');
+    } else {
+        console.warn('[DEV_MODE] Not on Linux. Using mock GPIO for development.');
+        Gpio = mockGpio.Gpio;
+    }
 } catch (err) {
-    console.warn('[Portal] GPIO module not found. Running in dev mode (no coin slot).');
-    Gpio = null;
+    console.error('[FATAL] Could not load real or mock GPIO module. Error:', err);
+    // If even the mock fails, something is very wrong.
+    process.exit(1);
 }
 
 const setupGpio = async () => {
+    // If Gpio isn't available (even the mock), do nothing.
+    if (!Gpio) {
+        console.log('[GPIO] GPIO setup skipped.');
+        return;
+    }
     if (!Gpio) return;
 
     // Get config once
