@@ -27,28 +27,35 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     try {
         const response = await fetch(`/api${url}`, { ...options, headers });
 
+        // Try to parse JSON body (both success and error) once
+        let body: any = null;
+        const contentType = response.headers.get('content-type') || '';
+        const hasJson = contentType.includes('application/json');
+        if (hasJson) {
+            try { body = await response.json(); } catch (_) { body = null; }
+        }
+
         if (!response.ok) {
-            let errorMessage = `Server error: ${response.status} ${response.statusText}`;
-            try {
-                const errorJson = await response.json();
-                errorMessage = errorJson.error || errorJson.message || errorMessage;
-            } catch (e) {
-                // Not a JSON response
-            }
-            throw new Error(errorMessage);
+            const errorMessage = (body && (body.error || body.message)) || `Server error: ${response.status} ${response.statusText}`;
+            const err: any = new Error(errorMessage);
+            err.status = response.status;
+            err.payload = body;
+            if (body && body.log) err.log = body.log; // pass through backend apply logs
+            throw err;
         }
 
         if (response.status === 204 || response.headers.get('content-length') === '0') {
             return null; // Return null for empty responses
         }
-        
-        return response.json();
-    } catch (error) {
-        // Handle network errors or other fetch-related issues
-        if (error instanceof Error) {
-             throw new Error(error.message || 'A network error occurred.');
+
+        return body !== null ? body : null;
+    } catch (error: any) {
+        // Network errors or thrown application errors
+        if (error?.message) {
+            throw error; // already a shaped Error with message/payload
         }
-        throw new Error('An unknown error occurred.');
+        const err: any = new Error('A network error occurred.');
+        throw err;
     }
 };
 

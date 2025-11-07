@@ -21,6 +21,7 @@ const Network: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+    const [applyLog, setApplyLog] = useState<string>('');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -90,8 +91,10 @@ const Network: React.FC = () => {
             // Immediately apply network settings on the device
             const applyResp = await applyNetworkConfig();
             setMessage(applyResp.message || response.message);
+            setApplyLog(applyResp.log || '');
         } catch (err: any) {
             setError(err.message);
+            setApplyLog(err?.log || err?.payload?.log || '');
         } finally {
             setIsSaving(false);
         }
@@ -134,7 +137,23 @@ const Network: React.FC = () => {
             <h1 className="text-3xl font-bold text-gray-800">Network Configuration</h1>
 
             {message && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">{message}</div>}
-            {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">{error}</div>}
+            {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative space-y-2">
+                    <div>{error}</div>
+                    {applyLog && (
+                        <details className="mt-2">
+                            <summary className="cursor-pointer text-sm text-red-800">Show details</summary>
+                            <pre className="mt-2 text-xs whitespace-pre-wrap bg-white border p-3 rounded max-h-64 overflow-auto">{applyLog}</pre>
+                        </details>
+                    )}
+                </div>
+            )}
+            {!error && applyLog && (
+                <details className="bg-gray-50 border px-4 py-3 rounded relative">
+                    <summary className="cursor-pointer text-sm text-gray-700">Show apply log</summary>
+                    <pre className="mt-2 text-xs whitespace-pre-wrap bg-white border p-3 rounded max-h-64 overflow-auto">{applyLog}</pre>
+                </details>
+            )}
 
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold text-gray-700 mb-4">Available Interfaces</h2>
