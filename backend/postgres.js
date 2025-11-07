@@ -175,16 +175,8 @@ const getSetting = async (key) => {
     const res = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
     if (res.rows.length === 0) return null;
     const raw = res.rows[0].value;
-    // node-postgres typically parses JSONB into objects automatically.
-    // In case it returns text, ensure we parse it safely.
-    if (typeof raw === 'string') {
-        try {
-            return JSON.parse(raw);
-        } catch (e) {
-            console.warn(`[DB] Failed to parse JSON value for key ${key}. Returning raw string.`);
-            return raw;
-        }
-    }
+    // For JSONB, node-postgres returns JS primitives/objects directly.
+    // If it's a string (e.g., hashed admin password), return as-is without parsing.
     return raw;
 };
 
