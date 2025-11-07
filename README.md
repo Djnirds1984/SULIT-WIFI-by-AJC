@@ -155,6 +155,55 @@ To enable the `gpiod` backend on Raspberry Pi OS:
 4. Restart the server and verify logs show:
    `"[GPIO] libgpiod backend selected (chip index X)."`
 
+### PHP GPIO Daemon (libgpiod)
+
+If you are using the new PHP backend, you can have PHP handle coin pulses directly via libgpiod.
+
+1. Install dependencies:
+   ```bash
+   sudo apt-get install -y php php-pgsql gpiod libgpiod2 libgpiod-dev
+   ```
+2. Configure `.env`:
+   ```
+   PGHOST=localhost
+   PGPORT=5432
+   PGDATABASE=sulitwifi
+   PGUSER=sulituser
+   PGPASSWORD=YOUR_PASSWORD
+   JWT_SECRET=change-me
+   GPIO_CHIP_INDEX=0   # Pi 3B+: 0, Pi 5: often 4
+   ```
+3. Set GPIO in Admin → System → GPIO Pin Configuration:
+   - `Coin Slot Pin (BCM)` (e.g., 17)
+   - `Coin slot is active-low` according to wiring
+4. Run the daemon:
+   ```bash
+   php php-backend/bin/gpio_daemon.php
+   ```
+   - It uses `gpiomon` for edge events with software debouncing (120ms).
+   - Falls back to `gpioget` polling if `gpiomon` is unavailable.
+   - On pulses, it records a counter in DB (`coinPulseState`) and pings `/api/connect/coin`.
+5. Optional: run as a service (systemd)
+   ```ini
+   [Unit]
+   Description=Sulit Wifi PHP GPIO Daemon
+   After=network.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/home/pi/sulit-wifi-portal
+   ExecStart=/usr/bin/php /home/pi/sulit-wifi-portal/php-backend/bin/gpio_daemon.php
+   Restart=always
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   ```bash
+   sudo nano /etc/systemd/system/sulit-gpio.service
+   sudo systemctl daemon-reload
+   sudo systemctl enable sulit-gpio --now
+   ```
+
 ### 4.1. Physical Connection
 
 *   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
