@@ -6,11 +6,30 @@ const { promisify } = require('util');
 const execPromise = promisify(exec);
 const bcrypt = require('bcryptjs');
 
+// Normalize and validate environment configuration for Postgres
+const rawPassword = process.env.PGPASSWORD;
+let normalizedPassword = undefined;
+if (rawPassword !== undefined) {
+    try {
+        // Ensure password is a string to satisfy SCRAM auth requirement
+        normalizedPassword = String(rawPassword);
+        if (normalizedPassword.length === 0) {
+            console.warn('[DB] PGPASSWORD is set but empty. Authentication may fail.');
+        }
+    } catch (e) {
+        console.error('[DB] Failed to normalize PGPASSWORD to string:', e.message);
+    }
+}
+
+if (rawPassword !== undefined && typeof rawPassword !== 'string') {
+    console.warn('[DB] PGPASSWORD was not a string. Coerced to string for SCRAM auth.');
+}
+
 const pool = new Pool({
     user: process.env.PGUSER || 'sulituser',
     host: process.env.PGHOST || 'localhost',
     database: process.env.PGDATABASE || 'sulitwifi',
-    password: process.env.PGPASSWORD,
+    password: normalizedPassword,
     port: process.env.PGPORT || 5432,
 });
 
@@ -48,6 +67,10 @@ const connect = async () => {
             if (retries === 0) {
                  console.error('[FATAL] Could not connect to the database after multiple retries.');
                  console.error('[Details]:', err.message);
+                 // Provide targeted diagnostics for common misconfigurations
+                 if (!normalizedPassword) {
+                    console.error('[Hint] No valid PGPASSWORD detected. Ensure it is set as a non-empty string.');
+                 }
                  if (err.code === '28P01') {
                     console.error('[Reason] Authentication failed. Please check the PGPASSWORD in your .env file.');
                  } else if (err.code === '3D000') {
