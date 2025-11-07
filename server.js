@@ -66,8 +66,20 @@ try {
         Gpio = mockGpio.Gpio;
     }
 } catch (err) {
-    console.error('[FATAL] Could not load GPIO backend. Error:', err);
-    process.exit(1);
+    console.error('[GPIO] Failed to load requested GPIO backend:', err && (err.stack || err.message || err));
+    // Attempt graceful fallback on Linux
+    if (process.platform === 'linux') {
+        try {
+            console.warn('[GPIO] Falling back to onoff backend.');
+            Gpio = require('onoff').Gpio;
+        } catch (e2) {
+            console.warn('[GPIO] onoff backend also failed. Using mock GPIO. Error:', e2 && (e2.stack || e2.message || e2));
+            Gpio = mockGpio.Gpio;
+        }
+    } else {
+        console.warn('[GPIO] Non-Linux environment. Using mock GPIO backend.');
+        Gpio = mockGpio.Gpio;
+    }
 }
 
 const setupGpio = async () => {
