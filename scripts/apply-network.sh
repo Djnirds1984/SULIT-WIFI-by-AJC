@@ -82,11 +82,22 @@ if command -v nmcli >/dev/null 2>&1; then
 
   if [[ "$SECURITY" == "open" ]]; then
     nmcli connection modify sulit-ap wifi-sec.key-mgmt none
-    # Ensure no WEP/PSK secrets linger
-    nmcli connection modify sulit-ap -wifi-sec.psk -wifi-sec.wep-key0 -wifi-sec.wep-key1 -wifi-sec.wep-key2 -wifi-sec.wep-key3 || true
+    # Clear any lingering WEP/PSK fields by setting them empty
+    nmcli connection modify sulit-ap wifi-sec.psk "" \
+      802-11-wireless-security.wep-key-type "" \
+      802-11-wireless-security.wep-key0 "" \
+      802-11-wireless-security.wep-key1 "" \
+      802-11-wireless-security.wep-key2 "" \
+      802-11-wireless-security.wep-key3 "" \
+      802-11-wireless-security.auth-alg ""
   else
     nmcli connection modify sulit-ap wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD"
-    nmcli connection modify sulit-ap -wifi-sec.wep-key0 -wifi-sec.wep-key1 -wifi-sec.wep-key2 -wifi-sec.wep-key3 || true
+    # Ensure all WEP keys are empty in case of previous config
+    nmcli connection modify sulit-ap \
+      802-11-wireless-security.wep-key0 "" \
+      802-11-wireless-security.wep-key1 "" \
+      802-11-wireless-security.wep-key2 "" \
+      802-11-wireless-security.wep-key3 ""
   fi
 
   nmcli -t connection up sulit-ap || nmcli -t connection up sulit-ap
