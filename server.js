@@ -491,6 +491,10 @@ const startServer = async () => {
 
     } catch (err) {
         console.error('[FATAL] Could not start server.');
+        if (err) {
+            console.error('[FATAL] Reason:', err.message || err);
+            if (err.stack) console.error('[FATAL] Stack:', err.stack);
+        }
         process.exit(1);
     }
 };
