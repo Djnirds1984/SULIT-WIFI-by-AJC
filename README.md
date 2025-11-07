@@ -125,6 +125,36 @@ The application requires a PostgreSQL database to store all persistent data.
 
 ## Step 4: GPIO Coin Slot Integration
 
+### Node 20 and GPIO Backends
+
+- Supported runtime: `Node.js 20+`
+- Backends:
+  - `onoff` (default) — works on Node 20; has edge/polling fallback
+  - `gpiod` (libgpiod) — modern backend using `/dev/gpiochip*` (recommended on modern kernels)
+  - `pigpio` — only for Node <=16; the app auto-falls back on Node 20
+
+To enable the `gpiod` backend on Raspberry Pi OS:
+
+1. Install system libraries:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y gpiod libgpiod2 libgpiod-dev
+   ```
+2. Install Node bindings:
+   ```bash
+   npm install node-libgpiod
+   ```
+3. Configure `.env`:
+   ```
+   GPIO_BACKEND=gpiod
+   GPIO_CHIP_INDEX=0
+   ```
+   - On Raspberry Pi 3B+, chip index is typically `0`.
+   - On Raspberry Pi 5, the chip index may differ (e.g., `4`).
+
+4. Restart the server and verify logs show:
+   `"[GPIO] libgpiod backend selected (chip index X)."`
+
 ### 4.1. Physical Connection
 
 *   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
@@ -322,8 +352,8 @@ This is a common and frustrating error on modern SBCs like the Raspberry Pi. It 
         5.  Select `<Finish>` and reboot the Raspberry Pi when prompted. After rebooting, GPIO2 and GPIO3 will be available for general use.
 
 *   **Cause 2: Missing System Library**
-    *   **Problem**: Your OS is missing `libgpiod-dev`, which is required for the GPIO library (`onoff`) to work correctly with modern Linux kernels.
-    *   **Solution**: Install the required library as described in **Step 1.4**: `sudo apt-get install -y libgpiod-dev`.
+    *   **Problem**: Your OS is missing libgpiod tooling, required for modern GPIO access (and the optional `gpiod` backend).
+    *   **Solution**: Install the libraries: `sudo apt-get install -y gpiod libgpiod2 libgpiod-dev`, then run `npm install` again (and `npm install node-libgpiod` if using the `gpiod` backend).
 
 *   **Cause 3: Insufficient Permissions**
     *   **Problem**: The application does not have permission from the OS to access the GPIO hardware device (`/dev/gpiochip*`).
@@ -374,3 +404,30 @@ This means Nginx is running but the backend Node.js server is not. Check the app
 
 ### Portal shows a blank page or 404 Not Found
 This means your Nginx configuration is incorrect. Double-check that the `root` path in `/etc/nginx/sites-available/sulit-wifi-portal` is the correct **absolute path** to your project's `public` folder. After fixing it, run `sudo nginx -t` and `sudo systemctl restart nginx`.
+### Using BCM 2 (SDA) for Coin Slot
+
+BCM 2 can be used as a normal input pin only if I2C is disabled.
+
+1. Disable I2C via raspi-config and reboot:
+   ```bash
+   sudo raspi-config
+   # Interface Options -> I2C -> Disable -> reboot
+   ```
+   Or comment I2C in `/boot/config.txt`:
+   ```
+   # dtparam=i2c_arm=on
+   # dtoverlay=i2c-*
+   ```
+2. Verify it’s freed:
+   ```bash
+   grep -E 'i2c_arm|dtoverlay=i2c' /boot/config.txt
+   ls /dev/i2c-*   # should return 'No such file or directory'
+   gpioinfo         # BCM 2 should appear unused
+   ```
+3. Configure in the Admin Panel → System → GPIO Pin Configuration:
+   - Set `Coin Slot Pin (BCM)` to `2`
+   - Set “coin slot is active-low” to match your wiring (typical coin acceptor pulls to GND)
+
+Wiring notes:
+- Use an opto-isolator or level-shifter; never feed >3.3V to Pi pins.
+- For active-low acceptors, ensure a pull-up to 3.3V.

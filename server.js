@@ -19,6 +19,7 @@ const DISABLE_GPIO = process.env.DISABLE_GPIO === 'true';
 // --- GPIO Setup ---
 let Gpio; // default GPIO class (onoff or mock)
 let PigpioGpio; // optional pigpio GPIO class
+let GpiodChip, GpiodLine, GpiodLineEvent, gpiodChip; // libgpiod backend
 let coinSlot, relay, statusLed;
 let coinPollInterval;
 
@@ -51,12 +52,28 @@ const mockGpio = {
 };
 
 
-const GPIO_BACKEND = process.env.GPIO_BACKEND || 'onoff'; // 'onoff' | 'pigpio'
+const GPIO_BACKEND = process.env.GPIO_BACKEND || 'onoff'; // 'onoff' | 'pigpio' | 'gpiod'
+const NODE_MAJOR = parseInt(process.versions.node.split('.')[0], 10);
+const GPIO_CHIP_INDEX = parseInt(process.env.GPIO_CHIP_INDEX || '0', 10);
 try {
     if (process.platform === 'linux') {
-        if (GPIO_BACKEND === 'pigpio') {
-            PigpioGpio = require('pigpio').Gpio;
-            console.log('[GPIO] pigpio backend selected.');
+        if (GPIO_BACKEND === 'gpiod') {
+            // Node 20-friendly backend via libgpiod
+            const gpiodPkg = require('node-libgpiod');
+            GpiodChip = gpiodPkg.Chip;
+            GpiodLine = gpiodPkg.Line;
+            GpiodLineEvent = gpiodPkg.LineEvent;
+            gpiodChip = new GpiodChip(GPIO_CHIP_INDEX);
+            console.log(`[GPIO] libgpiod backend selected (chip index ${GPIO_CHIP_INDEX}).`);
+        } else if (GPIO_BACKEND === 'pigpio') {
+            if (NODE_MAJOR <= 16) {
+                PigpioGpio = require('pigpio').Gpio;
+                console.log('[GPIO] pigpio backend selected.');
+            } else {
+                console.warn(`[GPIO] pigpio backend is not supported on Node ${process.versions.node}. Falling back to onoff.`);
+                Gpio = require('onoff').Gpio;
+                console.log('[GPIO] onoff backend selected.');
+            }
         } else {
             Gpio = require('onoff').Gpio;
             console.log('[GPIO] onoff backend selected.');
@@ -139,7 +156,28 @@ const setupGpio = async () => {
             console.log(`[COIN] Generated ${duration}-minute voucher: ${voucher.code}`);
         };
 
-        if (PigpioGpio) {
+        if (GpiodLine && gpiodChip) {
+            try {
+                const edge = GpiodLineEvent && GpiodLineEvent.RISING_EDGE ? GpiodLineEvent.RISING_EDGE : undefined;
+                coinSlot = new GpiodLine(gpiodChip, coinSlotPin, edge);
+                // Simple software debounce ~10ms
+                let lastTs = 0;
+                coinSlot.on('event', async () => {
+                    const now = Date.now();
+                    if (now - lastTs < 10) return;
+                    lastTs = now;
+                    console.log('[COIN] Coin pulse detected (libgpiod)!');
+                    await settingsForPulse();
+                });
+                // Provide unified unexport API
+                coinSlot.unexport = () => {
+                    try { coinSlot.removeAllListeners('event'); } catch (e) {}
+                };
+                console.log(`[GPIO] Coin slot configured via libgpiod on BCM pin ${coinSlotPin} (Active Low: ${activeLow}).`);
+            } catch (err) {
+                console.error(`[GPIO] libgpiod setup failed on pin ${coinSlotPin}: ${err.message}`);
+            }
+        } else if (PigpioGpio) {
             try {
                 coinSlot = new PigpioGpio(coinSlotPin, { mode: PigpioGpio.INPUT });
                 // Default pull-up for activeLow pulses (typical coin acceptor to GND)
@@ -227,9 +265,17 @@ const setupGpio = async () => {
     if (gpioConfig.relayPin > 0) {
         try {
             const relayPin = gpioConfig.relayPin;
-            relay = new Gpio(relayPin, 'out');
-            await relay.write(1); // Turn on relay
-            console.log(`[GPIO] Relay configured and activated on BCM pin ${relayPin}.`);
+            if (GpiodLine && gpiodChip) {
+                relay = new GpiodLine(gpiodChip, relayPin);
+                relay.requestOutputMode();
+                relay.setValue(1); // Turn on relay
+                relay.unexport = () => {};
+                console.log(`[GPIO] Relay configured via libgpiod and activated on BCM pin ${relayPin}.`);
+            } else {
+                relay = new Gpio(relayPin, 'out');
+                await relay.write(1); // Turn on relay
+                console.log(`[GPIO] Relay configured and activated on BCM pin ${relayPin}.`);
+            }
         } catch (err) {
             console.error(`[GPIO] Failed to setup Relay on pin ${gpioConfig.relayPin}. Reason: ${err.message}`);
             if (err.code === 'EINVAL') {
@@ -242,9 +288,17 @@ const setupGpio = async () => {
     if (gpioConfig.statusLedPin > 0) {
         try {
             const statusLedPin = gpioConfig.statusLedPin;
-            statusLed = new Gpio(statusLedPin, 'out');
-            await statusLed.write(1); // Turn on LED
-            console.log(`[GPIO] Status LED configured and activated on BCM pin ${statusLedPin}.`);
+            if (GpiodLine && gpiodChip) {
+                statusLed = new GpiodLine(gpiodChip, statusLedPin);
+                statusLed.requestOutputMode();
+                statusLed.setValue(1);
+                statusLed.unexport = () => {};
+                console.log(`[GPIO] Status LED configured via libgpiod and activated on BCM pin ${statusLedPin}.`);
+            } else {
+                statusLed = new Gpio(statusLedPin, 'out');
+                await statusLed.write(1); // Turn on LED
+                console.log(`[GPIO] Status LED configured and activated on BCM pin ${statusLedPin}.`);
+            }
         } catch (err) {
             console.error(`[GPIO] Failed to setup Status LED on pin ${gpioConfig.statusLedPin}. Reason: ${err.message}`);
              if (err.code === 'EINVAL') {
