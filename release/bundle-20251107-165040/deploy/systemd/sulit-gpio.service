@@ -1,0 +1,15 @@
+[Unit]
+Description=SULIT WIFI GPIO coin pulse daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sulit-wifi-portal
+EnvironmentFile=/opt/sulit-wifi-portal/.env
+ExecStart=/usr/bin/php /opt/sulit-wifi-portal/php-backend/bin/gpio_daemon.php
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

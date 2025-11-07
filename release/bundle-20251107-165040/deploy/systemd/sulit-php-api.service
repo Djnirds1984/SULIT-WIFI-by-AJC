@@ -1,0 +1,16 @@
+[Unit]
+Description=SULIT WIFI PHP API (built-in server)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sulit-wifi-portal
+EnvironmentFile=/opt/sulit-wifi-portal/.env
+ExecStart=/usr/bin/php -S 0.0.0.0:3001 -t /opt/sulit-wifi-portal/public /opt/sulit-wifi-portal/php-backend/router.php
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

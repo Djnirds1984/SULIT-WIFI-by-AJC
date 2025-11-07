@@ -1,0 +1,482 @@
+# SULIT WIFI Portal on Orange Pi & Raspberry Pi
+
+This guide provides step-by-step instructions for deploying the SULIT WIFI hotspot portal on ARM-based Single Board Computers (SBCs) like the Orange Pi One or Raspberry Pi 3B+/4, running a Debian-based OS like Armbian or Raspberry Pi OS.
+
+## Table of Contents
+
+1.  [Project Overview](#project-overview)
+2.  [Hardware & Software Prerequisites](#hardware--software-prerequisites)
+3.  [Step 1: SBC Setup (Armbian / Raspberry Pi OS)](#step-1-sbc-setup-armbian--raspberry-pi-os)
+4.  [Step 2: PostgreSQL Database Setup](#step-2-postgresql-database-setup)
+5.  [Step 3: Backend & Frontend Setup](#step-3-backend--frontend-setup)
+6.  [Step 4: GPIO Coin Slot Integration](#step-4-gpio-coin-slot-integration)
+7.  [Step 5: Nginx & Captive Portal Configuration](#step-5-nginx--captive-portal-configuration)
+8.  [Step 6: Running the Application](#step-6-running-the-application)
+9.  [Step 7: Admin Panel WAN Access](#step-7-admin-panel-wan-access)
+10. [Troubleshooting](#troubleshooting)
+
+---
+
+## Project Overview
+
+This application creates a captive portal for a Wi-Fi hotspot, running on a single, efficient Node.js server.
+
+- **API Server (Port 3001)**: A robust Express.js application serves as a dedicated API backend. It handles all user authentication (voucher/coin), secure admin panel endpoints (dashboard, settings), and hardware integration.
+- **Frontend**: A modern React application compiled into a static JavaScript bundle. It is served directly by Nginx for maximum performance and reliability.
+- **Database**: A persistent PostgreSQL database stores all vouchers, sessions, and system settings, ensuring data is safe across reboots.
+
+## Hardware & Software Prerequisites
+
+### Hardware
+*   Orange Pi One, Raspberry Pi 3B+, 4, or newer
+*   A reliable 5V/2A (or 3A for Raspberry Pi) power supply
+*   A high-quality microSD Card (16GB or more recommended)
+*   A USB Wi-Fi Adapter
+*   A physical coin acceptor/slot mechanism
+*   Jumper wires for connecting the coin slot
+
+### Software
+*   [Armbian](https://www.armbian.com/orange-pi-one/) (for Orange Pi) or [Raspberry Pi OS](https://www.raspberrypi.com/software/) (for Raspberry Pi)
+*   An SSH client (like PuTTY)
+*   [BalenaEtcher](https://www.balena.io/etcher/)
+
+---
+
+## Step 1: SBC Setup (Armbian / Raspberry Pi OS)
+
+1.  **Flash OS**: Download and flash the appropriate OS image onto your microSD card.
+2.  **First Boot & Config**: Boot the SBC, connect it via Ethernet, and SSH in. For Raspberry Pi OS, the default user is `pi`. For Armbian, you will set up a user on first boot.
+3.  **System Update**:
+    ```bash
+    sudo apt-get update && sudo apt-get upgrade -y
+    ```
+4.  **Install Build Tools & GPIO Library**: **(CRITICAL)** This is required for multiple components. `libgpiod-dev` is the modern library needed for the coin slot to function correctly.
+    ```bash
+    sudo apt-get install -y build-essential libgpiod-dev
+    ```
+5.  **Install Node.js & Git**:
+    ```bash
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    sudo apt-get install -y nodejs git
+    ```
+
+---
+
+## Step 2: PostgreSQL Database Setup
+
+The application requires a PostgreSQL database to store all persistent data.
+
+1.  **Install PostgreSQL**:
+    ```bash
+    sudo apt-get install -y postgresql postgresql-contrib
+    ```
+
+2.  **Create Database and User**:
+    *   Switch to the `postgres` user to access the database administrative shell:
+        ```bash
+        sudo -u postgres psql
+        ```
+    *   Inside the `psql` shell, run the following SQL commands one by one:
+        ```sql
+        -- Create a new database named 'sulitwifi'
+        CREATE DATABASE sulitwifi;
+
+        -- Create a new user with a secure password (replace 'your_secure_password'!)
+        CREATE USER sulituser WITH PASSWORD 'your_secure_password';
+        
+        -- Make the new user the owner of the database for full permissions
+        ALTER DATABASE sulitwifi OWNER TO sulituser;
+
+        -- Exit the psql shell
+        \q
+        ```
+    *   By making `sulituser` the owner, you grant all necessary privileges, including schema permissions, in a single step.
+
+---
+
+## Step 3: Backend & Frontend Setup
+
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/Djnirds1984/SULIT-WIFI-by-AJC.git sulit-wifi-portal
+    cd sulit-wifi-portal
+    ```
+2.  **Configure Environment Variables**:
+    *   The project uses a `.env` file to store sensitive information like your database password. A template file named `.env.example` is included to make setup easy.
+    *   **First, copy the template file**:
+        ```bash
+        cp .env.example .env
+        ```
+    *   **Next, edit the new `.env` file**:
+        ```bash
+        nano .env
+        ```
+    *   Inside the editor, replace `your_secure_password_here` with the actual password you created for the `sulituser` in Step 2.
+    *   **(Optional)** If you want to use the AI Wi-Fi name generator, uncomment the `API_KEY` line and add your Google Gemini API key.
+    *   Press `CTRL+X`, then `Y`, then `Enter` to save and exit.
+
+3.  **Install Dependencies**:
+    ```bash
+    npm install
+    ```
+    > **Note:** You may see errors related to `onoff` during this step. This is expected if you haven't installed the build tools from Step 1. The installation will still complete successfully, but the coin slot feature will be disabled.
+
+---
+
+## Step 4: GPIO Coin Slot Integration
+
+### Node 20 and GPIO Backends
+
+- Supported runtime: `Node.js 20+`
+- Backends:
+  - `onoff` (default) — works on Node 20; has edge/polling fallback
+  - `gpiod` (libgpiod) — modern backend using `/dev/gpiochip*` (recommended on modern kernels)
+  - `pigpio` — only for Node <=16; the app auto-falls back on Node 20
+
+To enable the `gpiod` backend on Raspberry Pi OS:
+
+1. Install system libraries:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y gpiod libgpiod2 libgpiod-dev
+   ```
+2. Install Node bindings:
+   ```bash
+   npm install node-libgpiod
+   ```
+3. Configure `.env`:
+   ```
+   GPIO_BACKEND=gpiod
+   GPIO_CHIP_INDEX=0
+   ```
+   - On Raspberry Pi 3B+, chip index is typically `0`.
+   - On Raspberry Pi 5, the chip index may differ (e.g., `4`).
+
+4. Restart the server and verify logs show:
+   `"[GPIO] libgpiod backend selected (chip index X)."`
+
+### PHP GPIO Daemon (libgpiod)
+
+If you are using the new PHP backend, you can have PHP handle coin pulses directly via libgpiod.
+
+1. Install dependencies:
+   ```bash
+   sudo apt-get install -y php php-pgsql gpiod libgpiod2 libgpiod-dev
+   ```
+2. Configure `.env`:
+   ```
+   PGHOST=localhost
+   PGPORT=5432
+   PGDATABASE=sulitwifi
+   PGUSER=sulituser
+   PGPASSWORD=YOUR_PASSWORD
+   JWT_SECRET=change-me
+   GPIO_CHIP_INDEX=0   # Pi 3B+: 0, Pi 5: often 4
+   ```
+3. Set GPIO in Admin → System → GPIO Pin Configuration:
+   - `Coin Slot Pin (BCM)` (e.g., 17)
+   - `Coin slot is active-low` according to wiring
+4. Run the daemon:
+   ```bash
+   php php-backend/bin/gpio_daemon.php
+   ```
+   - It uses `gpiomon` for edge events with software debouncing (120ms).
+   - Falls back to `gpioget` polling if `gpiomon` is unavailable.
+   - On pulses, it records a counter in DB (`coinPulseState`) and pings `/api/connect/coin`.
+5. Optional: run as a service (systemd)
+   ```ini
+   [Unit]
+   Description=Sulit Wifi PHP GPIO Daemon
+   After=network.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/home/pi/sulit-wifi-portal
+   ExecStart=/usr/bin/php /home/pi/sulit-wifi-portal/php-backend/bin/gpio_daemon.php
+   Restart=always
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   ```bash
+   sudo nano /etc/systemd/system/sulit-gpio.service
+   sudo systemctl daemon-reload
+   sudo systemctl enable sulit-gpio --now
+   ```
+
+### 4.1. Physical Connection
+
+*   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
+*   Connect its **VCC** wire to a 5V pin.
+*   Connect its **Signal** wire to the pin you configure in the Admin Panel (`System` > `GPIO Pin Configuration`).
+    *   **Note**: The server uses **BCM pin numbering**. The new, safe default is **GPIO17** (physical pin 11 on most Raspberry Pi models).
+    *   Check your Raspberry Pi's `pinout` diagram to identify the correct physical pin for BCM 17.
+
+### 4.2. Permissions
+
+The user running the application needs permission to access the GPIO hardware. This is a **three-step process**.
+
+1.  **Create the `gpio` Group**: On some systems, the `gpio` group may not exist by default. This command creates it.
+    ```bash
+    sudo groupadd --force gpio
+    ```
+    > The `--force` flag prevents an error if the group already exists.
+
+2.  **Add User to Group**: Add your current user to the `gpio` group. Replace `<your-username>` with your actual username (e.g., `pi` or `root`).
+    ```bash
+    sudo usermod -aG gpio <your-username>
+    ```
+
+3.  **Create a System Rule (`udev`) for Permissions**: **(CRITICAL FIX)**
+    This is the most important step. On modern systems, you must create a special rule that grants the `gpio` group access to the hardware every time the system boots.
+    *   Create and open the rule file:
+        ```bash
+        sudo nano /etc/udev/rules.d/99-gpio.rules
+        ```
+    *   Paste the following single line into the file:
+        ```
+        SUBSYSTEM=="gpio", KERNEL=="gpiochip*", ACTION=="add", PROGRAM="/bin/sh -c 'chown root:gpio /dev/%k && chmod 660 /dev/%k'"
+        ```
+    *   Save and exit the editor (`CTRL+X`, `Y`, `Enter`).
+
+4.  **Reboot**: A full reboot is required for all permission changes to take effect.
+    ```bash
+    sudo reboot
+    ```
+
+---
+
+## Step 5: Nginx & Captive Portal Configuration
+
+We use Nginx as a reverse proxy and `nodogsplash` as the captive portal software.
+
+### 1. Install Networking Services
+Install all the required networking tools. `hostapd` creates the Wi-Fi access point, `dnsmasq` provides DHCP and DNS services to users, `nginx` serves the web portal, and `ifupdown` helps manage network interfaces.
+```bash
+sudo apt-get install -y nginx ifupdown hostapd dnsmasq
+```
+
+### 2. Install Nodogsplash (Compile from Source)
+
+The `nodogsplash` package is often not available in default OS repositories. The most reliable way to install it is by compiling it from source.
+
+1.  **Install Build Dependencies**:
+    Nodogsplash requires a few development libraries to be compiled from source. This command installs the C++ compiler (`build-essential`), a web server library (`libmicrohttpd-dev`), and a JSON parsing library (`libjson-c-dev`).
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y build-essential libmicrohttpd-dev libjson-c-dev
+    ```
+
+2.  **Clone the Official Repository**:
+    ```bash
+    # IMPORTANT: Run this from your home directory (~), NOT from the sulit-wifi-portal directory.
+    cd ~ 
+    git clone https://github.com/nodogsplash/nodogsplash.git
+    ```
+
+3.  **Compile and Install**:
+    ```bash
+    cd nodogsplash
+    make
+    sudo make install
+    ```
+
+4.  **Return to the Portal Directory**:
+    ```bash
+    cd ~/sulit-wifi-portal
+    ```
+
+### 3. Configure Nginx (Robust Setup)
+This setup is designed for maximum reliability. Nginx, a high-performance web server, will directly serve your portal's user interface. The Node.js application will run as a dedicated API server.
+
+**Why this is important:** If the Node.js server has a problem (e.g., a database connection issue) and fails to start, users will **still see the portal's login page** instead of a "502 Bad Gateway" error. The portal will then show a specific "cannot connect" message, which is a much better user experience and easier to troubleshoot.
+
+*   **Create Nginx config file**: `sudo nano /etc/nginx/sites-available/sulit-wifi-portal`
+*   **Paste the following configuration**:
+
+    ```nginx
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+
+        # --- ⬇️ CRITICAL: UPDATE THIS PATH ⬇️ ---
+        # Replace with the ABSOLUTE path to your project's 'public' directory.
+        # Example for user 'pi': root /home/pi/sulit-wifi-portal/public;
+        # Example for user 'ajc': root /home/ajc/sulit-wifi-portal/public;
+        root /home/YOUR_USERNAME/sulit-wifi-portal/public;
+        # --- ⬆️ CRITICAL: UPDATE THIS PATH ⬆️ ---
+
+        index index.html;
+
+        # All requests starting with /api/ are proxied to the Node.js backend server
+        location /api/ {
+            proxy_pass http://localhost:3001;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+        }
+
+        # All other requests are for the frontend Single Page App (SPA).
+        # This serves the main index.html file, allowing the React app to handle all routes like /admin.
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+    ```
+*   **Enable the site**:
+    ```bash
+    sudo rm /etc/nginx/sites-enabled/default
+    sudo ln -s /etc/nginx/sites-available/sulit-wifi-portal /etc/nginx/sites-enabled/
+    ```
+*   **Test and restart Nginx**: `sudo nginx -t` followed by `sudo systemctl restart nginx`.
+
+### 4. Configure Nodogsplash
+Redirect captive portal clients to the portal's static IP address (which you will set in the admin panel).
+
+*   **Edit config**: `sudo nano /etc/nodogsplash/nodogsplash.conf`
+    *   Set `GatewayInterface wlan0` (or your Wi-Fi adapter's name).
+*   **Enable passwordless `ndsctl` access**: The server needs to manage users.
+    *   Run `sudo visudo`.
+    *   Add this line at the bottom, replacing `<your-username>`:
+        `<your-username> ALL=(ALL) NOPASSWD: /usr/bin/ndsctl`
+
+---
+
+## Step 6: Running the Application
+
+1.  **Start the Server with PM2**:
+    *   Install PM2: `sudo npm install pm2 -g`
+    *   **Start the server**:
+        ```bash
+        cd ~/sulit-wifi-portal
+        # This command builds the frontend then starts the API server.
+        pm2 start npm --name "sulit-wifi" -- start
+        ```
+    *   **Manage with PM2**:
+        *   `pm2 list`: Show running apps.
+        *   `pm2 logs sulit-wifi`: View live logs.
+        *   `pm2 restart sulit-wifi`: Restart after making code changes.
+    *   **Enable on boot**: `pm2 save` then `pm2 startup` (follow the on-screen command).
+
+2.  **Start Nodogsplash**:
+    ```bash
+    sudo nodogsplash
+    ```
+
+---
+
+## Step 7: Admin Panel WAN Access
+
+With the Nginx configuration, the admin panel is accessible on port `80` from any network connected to the SBC.
+
+1.  **Configure Firewall (UFW)**: If you use `ufw` (Uncomplicated Firewall):
+    ```bash
+    sudo ufw allow 80/tcp
+    sudo ufw enable
+    ```
+    If you are behind another router, you may also need to set up port forwarding on that router to forward traffic from its WAN IP on port `80` to your SBC's IP on port `80`.
+
+2.  **Access the Admin Panel**:
+    `http://<YOUR_SBC_IP>/admin`
+
+---
+
+## Troubleshooting
+
+### GPIO Error: `Failed to setup ... EINVAL: invalid argument, write`
+This is a common and frustrating error on modern SBCs like the Raspberry Pi. It can have several causes:
+
+*   **Cause 1 (Most Common): Hardware Pin Conflict with I2C**
+    *   **Problem**: On modern Raspberry Pi OS, the **I2C interface is enabled by default**. This interface reserves **GPIO2 (SDA)** and **GPIO3 (SCL)** for its own use. If you try to use either of these pins for the coin slot, the Operating System will block the application, causing the `EINVAL` error. This happens even if you have nothing connected to the I2C bus.
+    *   **Solution**: You must disable the I2C interface to free up the pins. This is the recommended fix if you want to use GPIO2 or GPIO3.
+        1.  Open the Raspberry Pi configuration tool:
+            ```bash
+            sudo raspi-config
+            ```
+        2.  Navigate to `3 Interface Options`.
+        3.  Select `I5 I2C`.
+        4.  When asked "Would you like the ARM I2C interface to be enabled?", select `<No>`.
+        5.  Select `<Finish>` and reboot the Raspberry Pi when prompted. After rebooting, GPIO2 and GPIO3 will be available for general use.
+
+*   **Cause 2: Missing System Library**
+    *   **Problem**: Your OS is missing libgpiod tooling, required for modern GPIO access (and the optional `gpiod` backend).
+    *   **Solution**: Install the libraries: `sudo apt-get install -y gpiod libgpiod2 libgpiod-dev`, then run `npm install` again (and `npm install node-libgpiod` if using the `gpiod` backend).
+
+*   **Cause 3: Insufficient Permissions**
+    *   **Problem**: The application does not have permission from the OS to access the GPIO hardware device (`/dev/gpiochip*`).
+    *   **Solution**: You must follow all steps in **Step 4.2: Permissions** exactly, especially Step 4.2.3 which creates the `udev` rule. This is a permanent fix that correctly sets hardware permissions on every boot. A reboot is required after applying the fix.
+
+### Error: `FATAL: The PGPASSWORD environment variable is not set.`
+This is the most common setup error.
+*   **Cause**: The application started but could not find the database password. This means the `.env` file is either missing, named incorrectly, or does not contain the `PGPASSWORD` line.
+*   **Solution**:
+    1.  Navigate to your project directory: `cd ~/sulit-wifi-portal`
+    2.  Ensure the file `.env` exists. You can check with `ls -a`.
+    3.  If it doesn't exist, create it by copying the template: `cp .env.example .env`.
+    4.  Open the file for editing: `nano .env`.
+    5.  Make sure the line `PGPASSWORD=your_secure_password_here` is present and that you have replaced the placeholder with your actual password.
+    6.  Restart the application: `pm2 restart sulit-wifi`.
+
+### Error: `password authentication failed for user "sulituser"` or `Authentication failed`
+This critical error means the password in your `.env` file does not match the password in the PostgreSQL database for the `sulituser`.
+
+*   **Cause**: A typo in the `.env` file or you've forgotten the password you set during Step 2.
+*   **Solution**: Reset the password in the database.
+    1.  Open the PostgreSQL administrative shell:
+        ```bash
+        sudo -u postgres psql
+        ```
+    2.  Inside the `psql` shell, run the following command to set a new password. **Replace `new_secure_password` with your desired password**:
+        ```sql
+        ALTER USER sulituser WITH PASSWORD 'new_secure_password';
+        ```
+    3.  Exit the `psql` shell by typing `\q` and pressing Enter.
+    4.  Update your `.env` file with the `new_secure_password`.
+    5.  Restart the application to apply the changes: `pm2 restart sulit-wifi`.
+
+### Error: `npm ERR! onoff@... install: node-gyp rebuild`
+This error occurs when installing the optional `onoff` dependency for the coin slot.
+*   **Cause**: Your system is missing the necessary C++ compiler and build tools.
+*   **Solution**: Install the required packages as described in **Step 1.4**: `sudo apt-get install -y build-essential libgpiod-dev`, then run `npm install` again.
+*   **Alternative**: You can ignore this error. The application will run correctly, but the physical coin slot feature will be disabled.
+
+### Error: `listen EADDRINUSE: address already in use :::3001`
+Another process is using port 3001. Find it with `sudo lsof -i :3001`, note the PID, and stop it with `sudo kill -9 <PID>`. Then restart the app.
+
+### Error: `error: permission denied for schema public`
+The `sulituser` does not have ownership of the database. Fix this in `psql` with: `ALTER DATABASE sulitwifi OWNER TO sulituser;` then restart the app.
+
+### Portal shows "502 Bad Gateway"
+This means Nginx is running but the backend Node.js server is not. Check the application logs (`pm2 logs sulit-wifi`) for startup errors, which are most often caused by incorrect database credentials in the `.env` file.
+
+### Portal shows a blank page or 404 Not Found
+This means your Nginx configuration is incorrect. Double-check that the `root` path in `/etc/nginx/sites-available/sulit-wifi-portal` is the correct **absolute path** to your project's `public` folder. After fixing it, run `sudo nginx -t` and `sudo systemctl restart nginx`.
+### Using BCM 2 (SDA) for Coin Slot
+
+BCM 2 can be used as a normal input pin only if I2C is disabled.
+
+1. Disable I2C via raspi-config and reboot:
+   ```bash
+   sudo raspi-config
+   # Interface Options -> I2C -> Disable -> reboot
+   ```
+   Or comment I2C in `/boot/config.txt`:
+   ```
+   # dtparam=i2c_arm=on
+   # dtoverlay=i2c-*
+   ```
+2. Verify it’s freed:
+   ```bash
+   grep -E 'i2c_arm|dtoverlay=i2c' /boot/config.txt
+   ls /dev/i2c-*   # should return 'No such file or directory'
+   gpioinfo         # BCM 2 should appear unused
+   ```
+3. Configure in the Admin Panel → System → GPIO Pin Configuration:
+   - Set `Coin Slot Pin (BCM)` to `2`
+   - Set “coin slot is active-low” to match your wiring (typical coin acceptor pulls to GND)
+
+Wiring notes:
+- Use an opto-isolator or level-shifter; never feed >3.3V to Pi pins.
+- For active-low acceptors, ensure a pull-up to 3.3V.
