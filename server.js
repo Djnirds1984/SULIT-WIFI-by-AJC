@@ -47,6 +47,14 @@ const setupGpio = async () => {
         try {
             const coinSlotPin = gpioConfig.coinPin;
             const activeLow = gpioConfig.coinSlotActiveLow !== false; // Default to true
+            
+            // Special handling for pin 2 conflicts
+            if (coinSlotPin === 2) {
+                console.warn(`[GPIO] Pin 2 selected for coin slot. This may conflict with I2C.`);
+                console.log(`[GPIO_FIX] To use pin 2, disable I2C: sudo raspi-config > Interface Options > I2C > Disable`);
+                console.log(`[GPIO_FIX] Or edit /boot/config.txt and comment out: dtparam=i2c_arm=on`);
+            }
+            
             coinSlot = new Gpio(coinSlotPin, 'in', 'rising', {
                 debounceTimeout: 100,
                 activeLow: activeLow
@@ -70,7 +78,16 @@ const setupGpio = async () => {
         } catch (err) {
             console.error(`[GPIO] Failed to setup Coin Slot on pin ${gpioConfig.coinPin}. Reason: ${err.message}`);
             if (err.code === 'EINVAL') {
-                console.error(`[GPIO_FIX] This pin may be in use by another service (like I2C or SPI). Please check your SBC's pinout and kernel configuration.`);
+                console.error(`[GPIO_FIX] Pin ${gpioConfig.coinPin} is in use by another service (likely I2C).`);
+                if (gpioConfig.coinPin === 2) {
+                    console.error(`[GPIO_FIX] Pin 2 is reserved for I2C. To use it:`);
+                    console.error(`[GPIO_FIX] 1. Disable I2C: sudo raspi-config > Interface Options > I2C > Disable`);
+                    console.error(`[GPIO_FIX] 2. Or edit /boot/config.txt and comment out: dtparam=i2c_arm=on`);
+                    console.error(`[GPIO_FIX] 3. Reboot and try again`);
+                } else {
+                    console.error(`[GPIO_FIX] Check your SBC's pinout and disable conflicting services.`);
+                }
+                console.error(`[GPIO_FIX] Alternative: Use GPIO 17, 27, 22, or 23 instead.`);
             }
         }
     }
