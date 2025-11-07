@@ -70,20 +70,26 @@ fi
 
 if command -v nmcli >/dev/null 2>&1; then
   log "Configuring via NetworkManager on $IFACE with SSID '$SSID'..."
-  # Create or update AP connection
-  if ! nmcli -t -f NAME connection show | grep -Fxq "sulit-ap"; then
-    nmcli connection add type wifi ifname "$IFACE" con-name sulit-ap ssid "$SSID"
+  # Recreate AP connection to avoid stale secrets (e.g., WEP leftover)
+  if nmcli -t -f NAME connection show | grep -Fxq "sulit-ap"; then
+    log "Deleting existing NetworkManager connection 'sulit-ap' to clear old security settings..."
+    nmcli -t connection delete sulit-ap || true
   fi
+  nmcli connection add type wifi ifname "$IFACE" con-name sulit-ap ssid "$SSID"
 
-  nmcli connection modify sulit-ap 802-11-wireless.mode ap 802-11-wireless.band bg
+  nmcli connection modify sulit-ap 802-11-wireless.mode ap 802-11-wireless.band bg \
+    ipv4.method manual ipv4.addresses "$CIDR"
+
   if [[ "$SECURITY" == "open" ]]; then
     nmcli connection modify sulit-ap wifi-sec.key-mgmt none
-    nmcli connection modify sulit-ap +ipv4.addresses "$CIDR" ipv4.method manual
+    # Ensure no WEP/PSK secrets linger
+    nmcli connection modify sulit-ap -wifi-sec.psk -wifi-sec.wep-key0 -wifi-sec.wep-key1 -wifi-sec.wep-key2 -wifi-sec.wep-key3 || true
   else
     nmcli connection modify sulit-ap wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD"
-    nmcli connection modify sulit-ap +ipv4.addresses "$CIDR" ipv4.method manual
+    nmcli connection modify sulit-ap -wifi-sec.wep-key0 -wifi-sec.wep-key1 -wifi-sec.wep-key2 -wifi-sec.wep-key3 || true
   fi
-  nmcli connection up sulit-ap || nmcli connection up sulit-ap
+
+  nmcli -t connection up sulit-ap || nmcli -t connection up sulit-ap
 else
   log "NetworkManager not found; falling back to dhcpcd for static IP."
   DHCPCD_CONF="/etc/dhcpcd.conf"
