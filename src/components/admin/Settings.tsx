@@ -112,7 +112,7 @@ const Settings: React.FC = () => {
 
             await Promise.all([portalUpdatePromise, gpioUpdatePromise]);
 
-            setMessage('Settings saved successfully. A server restart may be required for GPIO changes to take effect.');
+            setMessage('Settings saved successfully.');
             setPassword('');
             setConfirmPassword('');
 
@@ -262,8 +262,8 @@ const Settings: React.FC = () => {
                             <p className="text-xs text-gray-500 mt-1 ml-6">Check this if your coin acceptor sends a LOW signal on coin insert. This is the most common type.</p>
                         </div>
                         <div className="mt-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-                            <p className="font-bold text-blue-800">Important</p>
-                            <p className="text-sm text-blue-700">A server restart is required to apply new GPIO pin settings. You can do this by running `pm2 restart sulit-wifi` in the terminal.</p>
+                            <p className="font-bold text-blue-800">Real-time Updates</p>
+                            <p className="text-sm text-blue-700">GPIO settings are applied instantly when you save. No server restart is needed.</p>
                         </div>
                     </div>
                 </div>

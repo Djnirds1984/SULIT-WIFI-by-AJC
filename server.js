@@ -17,7 +17,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-key-that-should-be-i
 
 // --- GPIO Setup ---
 let Gpio;
-let coinSlotPin, relayPin, statusLedPin;
 let coinSlot, relay, statusLed;
 
 try {
@@ -38,7 +37,7 @@ const setupGpio = async () => {
         return;
     }
 
-    // Cleanup old pins before re-initializing
+    // Cleanup old pins before re-initializing. This makes the function safe to call multiple times.
     if (coinSlot) coinSlot.unexport();
     if (relay) relay.unexport();
     if (statusLed) statusLed.unexport();
@@ -46,7 +45,7 @@ const setupGpio = async () => {
     // --- Setup Coin Slot Individually ---
     if (gpioConfig.coinPin > 0) {
         try {
-            coinSlotPin = gpioConfig.coinPin;
+            const coinSlotPin = gpioConfig.coinPin;
             const activeLow = gpioConfig.coinSlotActiveLow !== false; // Default to true
             coinSlot = new Gpio(coinSlotPin, 'in', 'rising', {
                 debounceTimeout: 100,
@@ -79,7 +78,7 @@ const setupGpio = async () => {
     // --- Setup Relay Individually ---
     if (gpioConfig.relayPin > 0) {
         try {
-            relayPin = gpioConfig.relayPin;
+            const relayPin = gpioConfig.relayPin;
             relay = new Gpio(relayPin, 'out');
             await relay.write(1); // Turn on relay
             console.log(`[GPIO] Relay configured and activated on BCM pin ${relayPin}.`);
@@ -94,7 +93,7 @@ const setupGpio = async () => {
     // --- Setup Status LED Individually ---
     if (gpioConfig.statusLedPin > 0) {
         try {
-            statusLedPin = gpioConfig.statusLedPin;
+            const statusLedPin = gpioConfig.statusLedPin;
             statusLed = new Gpio(statusLedPin, 'out');
             await statusLed.write(1); // Turn on LED
             console.log(`[GPIO] Status LED configured and activated on BCM pin ${statusLedPin}.`);
@@ -255,7 +254,9 @@ app.get('/api/admin/settings/gpio', authMiddleware, async (req, res) => {
 app.post('/api/admin/settings/gpio', authMiddleware, async (req, res) => {
     try {
         await db.updateSetting('gpioConfig', req.body);
-        res.json({ message: 'GPIO settings saved. Please restart the server to apply changes.' });
+        // DYNAMIC RE-INITIALIZATION: Call setupGpio() immediately after saving.
+        await setupGpio(); 
+        res.json({ message: 'GPIO settings applied successfully.' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to save GPIO config' });
     }
