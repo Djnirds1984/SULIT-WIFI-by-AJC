@@ -173,13 +173,32 @@ const initSchema = async () => {
 
 const getSetting = async (key) => {
     const res = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
-    return res.rows.length > 0 ? res.rows[0].value : null;
+    if (res.rows.length === 0) return null;
+    const raw = res.rows[0].value;
+    // node-postgres typically parses JSONB into objects automatically.
+    // In case it returns text, ensure we parse it safely.
+    if (typeof raw === 'string') {
+        try {
+            return JSON.parse(raw);
+        } catch (e) {
+            console.warn(`[DB] Failed to parse JSON value for key ${key}. Returning raw string.`);
+            return raw;
+        }
+    }
+    return raw;
 };
 
 const updateSetting = async (key, value) => {
+    let jsonValue;
+    try {
+        jsonValue = JSON.stringify(value);
+    } catch (e) {
+        console.error(`[DB] Failed to serialize value for key ${key}:`, e.message);
+        throw e;
+    }
     await pool.query(
-        'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
-        [key, value]
+        'INSERT INTO settings (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET value = $2::jsonb',
+        [key, jsonValue]
     );
 };
 
