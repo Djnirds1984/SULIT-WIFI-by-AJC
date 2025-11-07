@@ -259,9 +259,10 @@ app.get('/api/admin/network/config', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/admin/network/config', authMiddleware, async(req, res) => {
-    // Placeholder for applying network changes
+    // Save the settings to the database
     await db.updateSetting('networkConfig', req.body);
-    res.status(501).json({ message: 'Network settings saved, but applying them is not yet implemented.' });
+    // Respond with a success status code and an informational message
+    res.status(200).json({ message: 'Network settings saved. Applying them requires a manual restart of networking services.' });
 });
 
 app.get('/api/admin/network/info', authMiddleware, async (req, res) => {

@@ -43,24 +43,31 @@ const Settings: React.FC = () => {
 
     const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
-        setSettings(prev => {
-            if (!prev) return null;
-            return {
-                ...prev,
-                [name]: type === 'checkbox' ? checked : (type === 'number' ? parseInt(value, 10) || 0 : value),
-            };
-        });
+        const newValue = type === 'checkbox' ? checked : (type === 'number' ? parseInt(value, 10) || 0 : value);
+        setSettings(prev => ({
+            ...({
+                portalTitle: '',
+                coinSlotEnabled: false,
+                coinPulseValue: 0,
+            } as PortalSettings),
+            ...prev,
+            [name]: newValue,
+        }));
     };
 
     const handleGpioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
-        setGpioConfig(prev => {
-            if (!prev) return null;
-            return {
-                ...prev,
-                [name]: type === 'checkbox' ? checked : parseInt(value, 10) || 0,
-            };
-        });
+        const newValue = type === 'checkbox' ? checked : parseInt(value, 10) || 0;
+        setGpioConfig(prev => ({
+            ...({
+                coinPin: 0,
+                relayPin: 0,
+                statusLedPin: 0,
+                coinSlotActiveLow: true,
+            } as GpioConfig),
+            ...prev,
+            [name]: newValue,
+        }));
     };
 
     const handleSave = async (e: React.FormEvent) => {
