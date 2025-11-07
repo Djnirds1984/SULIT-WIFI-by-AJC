@@ -1,4 +1,5 @@
 
+
 const { Pool } = require('pg');
 const { exec } = require('child_process');
 const { promisify } = require('util');
@@ -136,7 +137,7 @@ const initSchema = async () => {
         });
         
         await updateSetting('gpioConfig', {
-            coinPin: 2, // Default to BCM 2
+            coinPin: 17, // Default to BCM 17, a safer general-purpose pin unlikely to conflict with I2C.
             relayPin: 0,
             statusLedPin: 0,
             coinSlotActiveLow: true,

@@ -130,8 +130,8 @@ The application requires a PostgreSQL database to store all persistent data.
 *   Connect the coin acceptor's **GND** to a Ground pin on your SBC.
 *   Connect its **VCC** wire to a 5V pin.
 *   Connect its **Signal** wire to the pin you configure in the Admin Panel (`System` > `GPIO Pin Configuration`).
-    *   **Note**: The server uses **BCM pin numbering**. The default is **GPIO2** (physical pin 3).
-    *   Check your Raspberry Pi's pinout diagram to identify the correct physical pin.
+    *   **Note**: The server uses **BCM pin numbering**. The new, safe default is **GPIO17** (physical pin 11 on most Raspberry Pi models).
+    *   Check your Raspberry Pi's `pinout` diagram to identify the correct physical pin for BCM 17.
 
 ### 4.2. Permissions
 
@@ -309,13 +309,24 @@ With the Nginx configuration, the admin panel is accessible on port `80` from an
 ### GPIO Error: `Failed to setup ... EINVAL: invalid argument, write`
 This is a common and frustrating error on modern SBCs like the Raspberry Pi. It can have several causes:
 
-*   **Cause 1: Missing System Library**: Your OS is missing `libgpiod-dev`, which is required for the GPIO library (`onoff`) to work correctly with modern Linux kernels.
+*   **Cause 1 (Most Common): Hardware Pin Conflict with I2C**
+    *   **Problem**: On modern Raspberry Pi OS, the **I2C interface is enabled by default**. This interface reserves **GPIO2 (SDA)** and **GPIO3 (SCL)** for its own use. If you try to use either of these pins for the coin slot, the Operating System will block the application, causing the `EINVAL` error. This happens even if you have nothing connected to the I2C bus.
+    *   **Solution**: You must disable the I2C interface to free up the pins. This is the recommended fix if you want to use GPIO2 or GPIO3.
+        1.  Open the Raspberry Pi configuration tool:
+            ```bash
+            sudo raspi-config
+            ```
+        2.  Navigate to `3 Interface Options`.
+        3.  Select `I5 I2C`.
+        4.  When asked "Would you like the ARM I2C interface to be enabled?", select `<No>`.
+        5.  Select `<Finish>` and reboot the Raspberry Pi when prompted. After rebooting, GPIO2 and GPIO3 will be available for general use.
+
+*   **Cause 2: Missing System Library**
+    *   **Problem**: Your OS is missing `libgpiod-dev`, which is required for the GPIO library (`onoff`) to work correctly with modern Linux kernels.
     *   **Solution**: Install the required library as described in **Step 1.4**: `sudo apt-get install -y libgpiod-dev`.
 
-*   **Cause 2: Hardware Pin Conflict**: The GPIO pin you selected in the Admin Panel is already being used by another system service (like I2C, SPI, or a 1-Wire sensor).
-    *   **Solution**: Check your SBC's pinout diagram (e.g., via `pinout` command on Raspberry Pi) to see if the pin has an alternate function. If it does, ensure that service is disabled or choose a different, dedicated GPIO pin in the Admin Settings. The new, more detailed server logs will tell you *which* pin is failing.
-
-*   **Cause 3: Insufficient Permissions**: The application does not have permission from the OS to access the GPIO hardware device (`/dev/gpiochip*`).
+*   **Cause 3: Insufficient Permissions**
+    *   **Problem**: The application does not have permission from the OS to access the GPIO hardware device (`/dev/gpiochip*`).
     *   **Solution**: You must follow all steps in **Step 4.2: Permissions** exactly, especially Step 4.2.3 which creates the `udev` rule. This is a permanent fix that correctly sets hardware permissions on every boot. A reboot is required after applying the fix.
 
 ### Error: `FATAL: The PGPASSWORD environment variable is not set.`
