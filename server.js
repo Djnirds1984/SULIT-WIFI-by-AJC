@@ -18,6 +18,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-key-that-should-be-i
 // --- GPIO Setup ---
 let Gpio;
 let coinSlot, relay, statusLed;
+let coinPollInterval;
 
 // --- Mock GPIO for non-Linux environments ---
 const mockGpio = {
@@ -85,50 +86,107 @@ const setupGpio = async () => {
     
     // --- Setup Coin Slot Individually ---
     if (gpioConfig.coinPin > 0) {
-        try {
-            const coinSlotPin = gpioConfig.coinPin;
-            const activeLow = gpioConfig.coinSlotActiveLow !== false; // Default to true
-            
-            // Special handling for pin 2 conflicts
-            if (coinSlotPin === 2) {
-                console.warn(`[GPIO] Pin 2 selected for coin slot. This may conflict with I2C.`);
-                console.log(`[GPIO_FIX] To use pin 2, disable I2C: sudo raspi-config > Interface Options > I2C > Disable`);
-                console.log(`[GPIO_FIX] Or edit /boot/config.txt and comment out: dtparam=i2c_arm=on`);
-            }
-            
-            coinSlot = new Gpio(coinSlotPin, 'in', 'rising', {
-                debounceTimeout: 100,
-                activeLow: activeLow
-            });
+        const coinSlotPin = gpioConfig.coinPin;
+        const activeLow = gpioConfig.coinSlotActiveLow !== false; // Default to true
 
-            coinSlot.watch(async (err, value) => {
-                if (err) {
-                    console.error(`[GPIO] Error watching coin slot pin ${coinSlotPin}:`, err);
-                    return;
+        // Special handling for pin 2 conflicts
+        if (coinSlotPin === 2) {
+            console.warn(`[GPIO] Pin 2 selected for coin slot. This may conflict with I2C.`);
+            console.log(`[GPIO_FIX] To use pin 2, disable I2C: sudo raspi-config > Interface Options > I2C > Disable`);
+            console.log(`[GPIO_FIX] Or edit /boot/config.txt and comment out: dtparam=i2c_arm=on`);
+        }
+
+        // Clear previous poller if any
+        if (coinPollInterval) {
+            clearInterval(coinPollInterval);
+            coinPollInterval = null;
+        }
+
+        // Try edges in order, fallback to polling if edge setting fails
+        const edgeCandidates = ['rising', 'both', 'none'];
+        let lastErr = null;
+        for (const edge of edgeCandidates) {
+            try {
+                coinSlot = new Gpio(coinSlotPin, 'in', edge, {
+                    debounceTimeout: 100,
+                    activeLow: activeLow
+                });
+                console.log(`[GPIO] Coin slot configured on BCM pin ${coinSlotPin} with edge '${edge}' (Active Low: ${activeLow}).`);
+                lastErr = null;
+                break;
+            } catch (err) {
+                lastErr = err;
+                console.warn(`[GPIO] Edge '${edge}' failed for coin slot pin ${coinSlotPin}: ${err.message}`);
+            }
+        }
+
+        if (!coinSlot) {
+            console.error(`[GPIO] Failed to initialize coin slot on pin ${coinSlotPin}. Reason: ${lastErr?.message || 'Unknown'}`);
+            if (lastErr?.code === 'EINVAL') {
+                console.error(`[GPIO_FIX] Edge interrupts may be unsupported or the pin is reserved. Ensure you're using BCM numbering and try another general-purpose pin.`);
+                if (coinSlotPin === 2) {
+                    console.error(`[GPIO_FIX] Pin 2 is reserved for I2C. Disable I2C or choose another pin.`);
                 }
-                if (value === 1) { // Pulse detected
-                    console.log('[COIN] Coin pulse detected!');
-                    const settings = await db.getSetting('portalSettings');
-                    const duration = (settings.coinPulseValue || 15);
-                    const voucher = await db.createVoucher(duration * 60, 'COIN');
-                    console.log(`[COIN] Generated ${duration}-minute voucher: ${voucher.code}`);
-                    // Here you would typically trigger an action, like adding credit
+            }
+            // Give up without polling since we couldn't create a Gpio instance
+        } else {
+            // If edge is 'none', use polling to detect rising edges
+            const usePolling = (() => {
+                try {
+                    // onoff exposes readSync only for valid instances
+                    return true;
+                } catch (_) {
+                    return false;
                 }
-            });
-            console.log(`[GPIO] Coin slot configured on BCM pin ${coinSlotPin} (Active Low: ${activeLow}).`);
-        } catch (err) {
-            console.error(`[GPIO] Failed to setup Coin Slot on pin ${gpioConfig.coinPin}. Reason: ${err.message}`);
-            if (err.code === 'EINVAL') {
-                console.error(`[GPIO_FIX] Pin ${gpioConfig.coinPin} is in use by another service (likely I2C).`);
-                if (gpioConfig.coinPin === 2) {
-                    console.error(`[GPIO_FIX] Pin 2 is reserved for I2C. To use it:`);
-                    console.error(`[GPIO_FIX] 1. Disable I2C: sudo raspi-config > Interface Options > I2C > Disable`);
-                    console.error(`[GPIO_FIX] 2. Or edit /boot/config.txt and comment out: dtparam=i2c_arm=on`);
-                    console.error(`[GPIO_FIX] 3. Reboot and try again`);
-                } else {
-                    console.error(`[GPIO_FIX] Check your SBC's pinout and disable conflicting services.`);
+            })();
+
+            const settingsForPulse = async () => {
+                const settings = await db.getSetting('portalSettings');
+                const duration = (settings?.coinPulseValue || 15);
+                const voucher = await db.createVoucher(duration * 60, 'COIN');
+                console.log(`[COIN] Generated ${duration}-minute voucher: ${voucher.code}`);
+            };
+
+            // If edge is not 'none', prefer watch
+            try {
+                coinSlot.watch(async (err, value) => {
+                    if (err) {
+                        console.error(`[GPIO] Error watching coin slot pin ${coinSlotPin}:`, err);
+                        return;
+                    }
+                    if (value === 1) {
+                        console.log('[COIN] Coin pulse detected!');
+                        await settingsForPulse();
+                    }
+                });
+            } catch (err) {
+                console.warn(`[GPIO] watch() failed on pin ${coinSlotPin}. Falling back to polling. Reason: ${err.message}`);
+                // Fall through to polling
+            }
+
+            if (!coinPollInterval) {
+                try {
+                    let prev = 0;
+                    coinPollInterval = setInterval(async () => {
+                        try {
+                            const current = coinSlot.readSync();
+                            // Detect rising edge
+                            if (prev === 0 && current === 1) {
+                                console.log('[COIN] Coin pulse detected via polling!');
+                                await settingsForPulse();
+                            }
+                            prev = current;
+                        } catch (e) {
+                            // If polling fails, stop interval
+                            console.error(`[GPIO] Polling read failed on pin ${coinSlotPin}: ${e.message}`);
+                            clearInterval(coinPollInterval);
+                            coinPollInterval = null;
+                        }
+                    }, 100);
+                    console.log('[GPIO] Coin slot polling enabled at 100ms interval.');
+                } catch (e) {
+                    console.error(`[GPIO] Failed to start polling on pin ${coinSlotPin}: ${e.message}`);
                 }
-                console.error(`[GPIO_FIX] Alternative: Use GPIO 17, 27, 22, or 23 instead.`);
             }
         }
     }
@@ -505,6 +563,10 @@ startServer();
 process.on('SIGINT', () => {
     console.log('[Portal] Shutting down...');
     if (coinSlot) coinSlot.unexport();
+    if (coinPollInterval) {
+        clearInterval(coinPollInterval);
+        coinPollInterval = null;
+    }
     if (relay) relay.unexport();
     if (statusLed) statusLed.unexport();
     db.close().then(() => {
