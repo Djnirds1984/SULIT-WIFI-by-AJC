@@ -17,7 +17,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'a-very-secret-key-that-should-be-i
 const DISABLE_GPIO = process.env.DISABLE_GPIO === 'true';
 
 // --- GPIO Setup ---
-let Gpio;
+let Gpio; // default GPIO class (onoff or mock)
+let PigpioGpio; // optional pigpio GPIO class
 let coinSlot, relay, statusLed;
 let coinPollInterval;
 
@@ -50,18 +51,22 @@ const mockGpio = {
 };
 
 
+const GPIO_BACKEND = process.env.GPIO_BACKEND || 'onoff'; // 'onoff' | 'pigpio'
 try {
-    // Only require onoff on Linux
     if (process.platform === 'linux') {
-        Gpio = require('onoff').Gpio;
-        console.log('[GPIO] Native GPIO module loaded.');
+        if (GPIO_BACKEND === 'pigpio') {
+            PigpioGpio = require('pigpio').Gpio;
+            console.log('[GPIO] pigpio backend selected.');
+        } else {
+            Gpio = require('onoff').Gpio;
+            console.log('[GPIO] onoff backend selected.');
+        }
     } else {
         console.warn('[DEV_MODE] Not on Linux. Using mock GPIO for development.');
         Gpio = mockGpio.Gpio;
     }
 } catch (err) {
-    console.error('[FATAL] Could not load real or mock GPIO module. Error:', err);
-    // If even the mock fails, something is very wrong.
+    console.error('[FATAL] Could not load GPIO backend. Error:', err);
     process.exit(1);
 }
 
@@ -115,91 +120,92 @@ const setupGpio = async () => {
             clearInterval(coinPollInterval);
             coinPollInterval = null;
         }
+        const settingsForPulse = async () => {
+            const settings = await db.getSetting('portalSettings');
+            const duration = (settings?.coinPulseValue || 15);
+            const voucher = await db.createVoucher(duration * 60, 'COIN');
+            console.log(`[COIN] Generated ${duration}-minute voucher: ${voucher.code}`);
+        };
 
-        // Try edges in order, fallback to polling if edge setting fails
-        const edgeCandidates = ['rising', 'both', 'none'];
-        let lastErr = null;
-        for (const edge of edgeCandidates) {
+        if (PigpioGpio) {
             try {
-                coinSlot = new Gpio(coinSlotPin, 'in', edge, {
-                    debounceTimeout: 100,
-                    activeLow: activeLow
-                });
-                console.log(`[GPIO] Coin slot configured on BCM pin ${coinSlotPin} with edge '${edge}' (Active Low: ${activeLow}).`);
-                lastErr = null;
-                break;
-            } catch (err) {
-                lastErr = err;
-                console.warn(`[GPIO] Edge '${edge}' failed for coin slot pin ${coinSlotPin}: ${err.message}`);
-            }
-        }
-
-        if (!coinSlot) {
-            console.error(`[GPIO] Failed to initialize coin slot on pin ${coinSlotPin}. Reason: ${lastErr?.message || 'Unknown'}`);
-            if (lastErr?.code === 'EINVAL') {
-                console.error(`[GPIO_FIX] Edge interrupts may be unsupported or the pin is reserved. Ensure you're using BCM numbering and try another general-purpose pin.`);
-                if (coinSlotPin === 2) {
-                    console.error(`[GPIO_FIX] Pin 2 is reserved for I2C. Disable I2C or choose another pin.`);
-                }
-            }
-            // Give up without polling since we couldn't create a Gpio instance
-        } else {
-            // If edge is 'none', use polling to detect rising edges
-            const usePolling = (() => {
-                try {
-                    // onoff exposes readSync only for valid instances
-                    return true;
-                } catch (_) {
-                    return false;
-                }
-            })();
-
-            const settingsForPulse = async () => {
-                const settings = await db.getSetting('portalSettings');
-                const duration = (settings?.coinPulseValue || 15);
-                const voucher = await db.createVoucher(duration * 60, 'COIN');
-                console.log(`[COIN] Generated ${duration}-minute voucher: ${voucher.code}`);
-            };
-
-            // If edge is not 'none', prefer watch
-            try {
-                coinSlot.watch(async (err, value) => {
-                    if (err) {
-                        console.error(`[GPIO] Error watching coin slot pin ${coinSlotPin}:`, err);
-                        return;
-                    }
-                    if (value === 1) {
-                        console.log('[COIN] Coin pulse detected!');
+                coinSlot = new PigpioGpio(coinSlotPin, { mode: PigpioGpio.INPUT });
+                // Default pull-up for activeLow pulses (typical coin acceptor to GND)
+                coinSlot.pullUpDown(activeLow ? PigpioGpio.PUD_UP : PigpioGpio.PUD_DOWN);
+                // Debounce/glitch filter ~10ms
+                coinSlot.glitchFilter(10000);
+                coinSlot.on('interrupt', async (level) => {
+                    // For activeLow, a coin pulse goes low then high; trigger on rising to 1
+                    if ((activeLow && level === 1) || (!activeLow && level === 1)) {
+                        console.log('[COIN] Coin pulse detected (pigpio)!');
                         await settingsForPulse();
                     }
                 });
+                console.log(`[GPIO] Coin slot configured via pigpio on BCM pin ${coinSlotPin} (Active Low: ${activeLow}).`);
             } catch (err) {
-                console.warn(`[GPIO] watch() failed on pin ${coinSlotPin}. Falling back to polling. Reason: ${err.message}`);
-                // Fall through to polling
+                console.error(`[GPIO] pigpio setup failed on pin ${coinSlotPin}: ${err.message}`);
+            }
+        } else {
+            // onoff path: try edges then polling
+            const edgeCandidates = ['rising', 'both', 'none'];
+            let lastErr = null;
+            for (const edge of edgeCandidates) {
+                try {
+                    coinSlot = new Gpio(coinSlotPin, 'in', edge, {
+                        debounceTimeout: 100,
+                        activeLow: activeLow
+                    });
+                    console.log(`[GPIO] Coin slot configured on BCM pin ${coinSlotPin} with edge '${edge}' (Active Low: ${activeLow}).`);
+                    lastErr = null;
+                    break;
+                } catch (err) {
+                    lastErr = err;
+                    console.warn(`[GPIO] Edge '${edge}' failed for coin slot pin ${coinSlotPin}: ${err.message}`);
+                }
             }
 
-            if (!coinPollInterval) {
+            if (!coinSlot) {
+                console.error(`[GPIO] Failed to initialize coin slot on pin ${coinSlotPin}. Reason: ${lastErr?.message || 'Unknown'}`);
+                if (lastErr?.code === 'EINVAL') {
+                    console.error(`[GPIO_FIX] Edge interrupts may be unsupported or the pin is reserved. Ensure BCM numbering and try another general-purpose pin.`);
+                }
+            } else {
                 try {
-                    let prev = 0;
-                    coinPollInterval = setInterval(async () => {
-                        try {
-                            const current = coinSlot.readSync();
-                            // Detect rising edge
-                            if (prev === 0 && current === 1) {
-                                console.log('[COIN] Coin pulse detected via polling!');
-                                await settingsForPulse();
-                            }
-                            prev = current;
-                        } catch (e) {
-                            // If polling fails, stop interval
-                            console.error(`[GPIO] Polling read failed on pin ${coinSlotPin}: ${e.message}`);
-                            clearInterval(coinPollInterval);
-                            coinPollInterval = null;
+                    coinSlot.watch(async (err, value) => {
+                        if (err) {
+                            console.error(`[GPIO] Error watching coin slot pin ${coinSlotPin}:`, err);
+                            return;
                         }
-                    }, 100);
-                    console.log('[GPIO] Coin slot polling enabled at 100ms interval.');
-                } catch (e) {
-                    console.error(`[GPIO] Failed to start polling on pin ${coinSlotPin}: ${e.message}`);
+                        if (value === 1) {
+                            console.log('[COIN] Coin pulse detected!');
+                            await settingsForPulse();
+                        }
+                    });
+                } catch (err) {
+                    console.warn(`[GPIO] watch() failed on pin ${coinSlotPin}. Falling back to polling. Reason: ${err.message}`);
+                }
+
+                if (!coinPollInterval) {
+                    try {
+                        let prev = 0;
+                        coinPollInterval = setInterval(async () => {
+                            try {
+                                const current = coinSlot.readSync();
+                                if (prev === 0 && current === 1) {
+                                    console.log('[COIN] Coin pulse detected via polling!');
+                                    await settingsForPulse();
+                                }
+                                prev = current;
+                            } catch (e) {
+                                console.error(`[GPIO] Polling read failed on pin ${coinSlotPin}: ${e.message}`);
+                                clearInterval(coinPollInterval);
+                                coinPollInterval = null;
+                            }
+                        }, 100);
+                        console.log('[GPIO] Coin slot polling enabled at 100ms interval.');
+                    } catch (e) {
+                        console.error(`[GPIO] Failed to start polling on pin ${coinSlotPin}: ${e.message}`);
+                    }
                 }
             }
         }
