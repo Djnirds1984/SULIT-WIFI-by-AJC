@@ -201,7 +201,54 @@ switch (true) {
     case $method === 'POST' && $uri === '/api/admin/network/config':
         $requireAuth();
         $db->updateSetting('networkConfig', $input ?? []);
-        Response::json(['message' => 'Network settings saved. Applying them requires a manual restart of networking services.']);
+        Response::json(['message' => 'Network settings saved. Applying now will reconfigure the hotspot and restart services.']);
+        break;
+
+    case $method === 'POST' && $uri === '/api/admin/network/apply':
+        $requireAuth();
+        $cfg = $db->getSetting('networkConfig') ?? [];
+        $iface = $cfg['hotspotInterface'] ?? 'wlan0';
+        $ssid = $cfg['ssid'] ?? 'SULIT WIFI Hotspot';
+        $security = $cfg['security'] ?? 'open';
+        $password = $cfg['password'] ?? '';
+        $ip = $cfg['hotspotIpAddress'] ?? '10.0.0.1';
+        $dhcp = $cfg['hotspotDhcpServer'] ?? ['enabled' => true, 'start' => '10.0.0.10', 'end' => '10.0.0.254', 'lease' => '12h'];
+        $start = $dhcp['start'] ?? '10.0.0.10';
+        $end = $dhcp['end'] ?? '10.0.0.254';
+        $lease = $dhcp['lease'] ?? '12h';
+
+        $root = dirname(__DIR__, 2);
+        $script = $root . DIRECTORY_SEPARATOR . 'scripts' . DIRECTORY_SEPARATOR . 'apply-network.sh';
+        if (!is_file($script)) {
+            Response::json(['error' => 'apply-network.sh not found.'], 500);
+        }
+
+        $cmd = [
+            'sudo', $script,
+            '--iface', $iface,
+            '--ssid', $ssid,
+            '--security', $security,
+            '--password', $password,
+            '--ip', $ip,
+            '--dhcp-start', $start,
+            '--dhcp-end', $end,
+            '--lease', $lease,
+        ];
+
+        // Execute and capture output
+        $descriptorspec = [ 1 => ['pipe', 'w'], 2 => ['pipe', 'w'] ];
+        $proc = proc_open($cmd, $descriptorspec, $pipes, $root);
+        if (!is_resource($proc)) {
+            Response::json(['error' => 'Failed to start apply process.'], 500);
+        }
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        foreach ($pipes as $p) fclose($p);
+        $code = proc_close($proc);
+        if ($code !== 0) {
+            Response::json(['error' => 'Apply failed: ' . trim($stderr)], 500);
+        }
+        Response::json(['message' => 'Network applied successfully.', 'log' => trim($stdout)]);
         break;
 
     case $method === 'GET' && $uri === '/api/admin/network/info':

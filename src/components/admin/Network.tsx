@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getNetworkConfig, updateNetworkConfig, getNetworkInfo, getWanInfo } from '../../services/wifiService';
+import { getNetworkConfig, updateNetworkConfig, getNetworkInfo, getWanInfo, applyNetworkConfig } from '../../services/wifiService';
 import { NetworkConfig, NetworkInterface } from '../../types';
 import ServerStackIcon from '../icons/ServerStackIcon';
 
@@ -87,7 +87,9 @@ const Network: React.FC = () => {
         setError('');
         try {
             const response = await updateNetworkConfig(config);
-            setMessage(response.message);
+            // Immediately apply network settings on the device
+            const applyResp = await applyNetworkConfig();
+            setMessage(applyResp.message || response.message);
         } catch (err: any) {
             setError(err.message);
         } finally {

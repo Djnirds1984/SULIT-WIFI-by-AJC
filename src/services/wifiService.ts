@@ -183,6 +183,10 @@ export const getWanInfo = (): Promise<{ name: string }> => {
     return apiFetch('/admin/network/wan');
 };
 
+export const applyNetworkConfig = (): Promise<{ message: string; log?: string }> => {
+    return apiFetch('/admin/network/apply', { method: 'POST' });
+};
+
 
 // Portal Editor
 export const getPortalHtml = (): Promise<{ html: string }> => {

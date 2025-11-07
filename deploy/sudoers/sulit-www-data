@@ -1,0 +1,2 @@
+## Allow PHP API (www-data) to apply network settings via a controlled script
+www-data ALL=(root) NOPASSWD: /opt/sulit-wifi-portal/scripts/apply-network.sh
